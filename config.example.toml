@@ -24,5 +24,41 @@ host = "127.0.0.1"
 port = 8765
 # token_file = "/etc/pap-analytics/http_token"     # Docker: /run/secrets/pap_http_token
 
-# Analysis thresholds are defined by the analytics work packages; overrides go here.
+# Analysis thresholds. Everything below is optional: uncomment a key to override its default.
+# Only the keys listed here are supported; unknown keys, non-numeric values and out-of-range
+# values are rejected at load time. `pap config show` prints all effective values.
+# Overrides take effect for anomaly detection (`find_anomalies`, night summaries) and oximetry.
 [thresholds]
+
+# --- Leak -------------------------------------------------------------------------------
+# large_leak_lps = 0.4          # L/s (~24 L/min), number >= 0. Leak above this counts as "large".
+# leak_min_s = 120              # s, >= 0. Large leak must last this long to raise `large_leak`.
+
+# --- Event / desaturation clusters ------------------------------------------------------
+# cluster_min_events = 3        # integer >= 1. Apnea/hypopnea events (or desaturations >= 3 %)
+#                               # needed within the window for `event_cluster` / `desaturation_cluster`.
+# cluster_window_min = 10       # min, >= 0. Window in which those events must fall.
+
+# --- Pressure and ventilation -----------------------------------------------------------
+# pressure_max_min = 5          # min, >= 0. Pressure at the device maximum this long -> `pressure_at_max`.
+# vent_low_ratio = 0.5          # 0..1. 60 s mean minute ventilation below ratio x target -> `low_ventilation` (ASV).
+# vent_low_min = 3              # min, >= 0. How long the low ventilation must last.
+
+# --- Mask-off gaps ----------------------------------------------------------------------
+# gap_min = 10                  # min, >= 0. Gap between sessions of a night longer than this -> `mask_off_gap`.
+
+# --- Night-to-night outliers (`metric_outlier`: AHI, leak p95, usage, ODI3) -------------
+# outlier_z = 2.0               # standard deviations, >= 0. Deviation from the baseline needed to flag a night.
+# baseline_nights = 14          # integer >= 1. Number of previous nights forming the baseline.
+# baseline_min_nights = 5       # integer >= 1. Fewer baseline nights -> no outlier detection.
+
+# --- Oximetry: artefact filter, desaturations (used by ODI/T90 and anomalies) -----------
+# spo2_low_pct = 90             # %, 0..100. SpO2 below this -> `low_spo2` anomaly (does not change oximetry metrics).
+# spo2_max_slope = 4.0          # % per second, >= 0. SpO2 jump larger than this between samples is an artefact.
+# min_valid_run_s = 10.0        # s, >= 0. Valid SpO2 runs shorter than this are dropped as artefacts.
+# baseline_window_s = 120.0     # s, >= 1. Desaturation baseline = max valid SpO2 in this preceding window.
+# desat_min_duration_s = 10.0   # s, >= 0. A desaturation must last this long to be counted.
+# association_window_s = 30.0   # s, >= 0. Max distance for associating a desaturation with a respiratory event.
+
+# Deliberately NOT configurable (hardcoded): desaturation depths of 3 % / 4 % (ODI3 / ODI4),
+# the 60 s merge of nearby low-SpO2 spans, and the minimum absolute deviation per outlier metric.

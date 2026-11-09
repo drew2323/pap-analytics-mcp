@@ -63,9 +63,14 @@ def effective_config(config: Config) -> dict[str, Any]:
             "host": config.http.host, "port": config.http.port,
             "token_file": _file_info(config.http.token_file),
         },
-        "thresholds": config.thresholds,
+        "thresholds": effective_thresholds(config.thresholds),
     }  # fmt: skip
 
+
+def effective_thresholds(overrides: dict[str, Any]) -> dict[str, float]:
+    from pap_analytics.analytics.thresholds import effective
+
+    return effective(overrides)
 
 def _config_cmd(args: argparse.Namespace, config: Config) -> int:
     print(json.dumps(effective_config(config), indent=2))
