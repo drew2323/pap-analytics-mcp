@@ -106,6 +106,16 @@ def _source(i: int, s: dict[str, Any]) -> SourceConfig:
     )
 
 
+def _thresholds(raw: Any) -> dict[str, Any]:
+    from pap_analytics.analytics.thresholds import validate  # lazy: analytics imports config
+
+    if not isinstance(raw, dict):
+        raise ConfigError("thresholds: must be a table")
+    try:
+        return dict(validate(raw))
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
+
 def load_config(path: str | os.PathLike[str] | None = None, env: dict[str, str] | None = None) -> Config:
     """Load configuration. ``env`` defaults to ``os.environ`` (injectable for tests)."""
     env = os.environ if env is None else env
@@ -141,5 +151,5 @@ def load_config(path: str | os.PathLike[str] | None = None, env: dict[str, str] 
         store_dir=_path(store_dir) if store_dir else DEFAULT_STORE_DIR.expanduser(),
         day_boundary_hour=int(env.get("PAP_DAY_BOUNDARY_HOUR", data.get("day_boundary_hour", 12))),
         http=http,
-        thresholds=dict(data.get("thresholds", {})),
+        thresholds=_thresholds(data.get("thresholds", {})),
     )

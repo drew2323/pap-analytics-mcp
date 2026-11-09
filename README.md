@@ -139,6 +139,7 @@ The full annotated example is [`config.example.toml`](config.example.toml).
 | `store_dir` | `~/.local/share/pap-analytics` | Where imported data lives (disposable, rebuildable) |
 | `day_boundary_hour` | `12` | A "night" runs from noon to noon, like in ResMed/OSCAR |
 | `[http] host / port / token_file` | `127.0.0.1` / `8765` / – | HTTP transport |
+| `[thresholds] <key>` | built-in defaults | Optional analytics overrides (leak, clusters, pressure, oximetry, outliers); every supported key, default, unit and range is listed in [`config.example.toml`](config.example.toml) |
 | `[sources.sync]` | – | Optional rsync pull of the data from another host |
 
 Environment overrides: `PAP_CONFIG`, `PAP_STORE_DIR`, `PAP_DAY_BOUNDARY_HOUR`, `PAP_HTTP_HOST`, `PAP_HTTP_PORT`,
