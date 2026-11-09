@@ -113,7 +113,7 @@ server instance (own port, own `PAP_HTTP_TOKEN_FILE`) per HTTP client. Stdio cli
 
 ## Production setup log
 
-Live setup on `vpsagentfarma` (native mode, release `v0.1.0`):
+Live setup on `vpsagentfarma` (native mode, release `v0.1.1`):
 
 - hnizdo: user `pap-sync` (system, locked password, group `aircannect`), `rsync` installed (Debian
   `rsync` package provides `/usr/bin/rrsync`), `authorized_keys`:
@@ -121,16 +121,15 @@ Live setup on `vpsagentfarma` (native mode, release `v0.1.0`):
   The private key `~/.config/pap-analytics/sync_ed25519` exists only on vpsagentfarma; pinned
   host key in `known_hosts` (ED25519 fingerprint checked against `ssh-keygen -lf` on hnizdo).
 - Checked: pulling works; writing (`rsync` upload) and arbitrary commands are refused by rrsync.
-- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.0" --with matplotlib`;
+- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.1" --with matplotlib`;
   config `~/.config/pap-analytics/config.toml` (store `~/.local/share/pap-analytics/store`, source copy
   `~/.local/share/pap-analytics/source/aircannect`); units `pap-ingest.{service,timer}` in
   `~/.config/systemd/user/`, user linger on.
 - Hermes `david`: `mcp_servers.pap` (stdio, `PAP_CONFIG` env), config backup `config.yaml.bak-pap-*`.
   Hermes only offers MCP tools it has configured; "jaká byla poslední noc?" is answered from pap tools.
-- ChatGPT Voice: `pap-chatgpt-tunnel.service` + launcher `~/.local/bin/pap-mcp-stdio` installed and enabled,
-  **but inactive** until `~/.config/tunnel-client/pap-david.yaml` (own `tunnel_id`, mcp.commands →
-  `/home/david/.local/bin/pap-mcp-stdio`) and `openai-runtime-key-pap` exist. They need a new tunnel
-  created in OpenAI Tunnels management; do not reuse the tunnel of another service.
-- Note: `pap --version` prints `0.0.0`; the package version is not yet bumped from the tag.
+- ChatGPT Voice: user unit `pap-chatgpt-tunnel.service` (modelled on `hermes-chatgpt-tunnel.service`) runs
+  `tunnel-client run --profile pap-david` with profile `~/.config/tunnel-client/pap-david.yaml` (own tunnel,
+  `mcp.commands` → `~/.local/bin/pap-mcp-stdio`) and runtime key file `openai-runtime-key-pap` (0600). Outbound only.
+  Check: `curl "$(cat ~/.local/state/pap-chatgpt/health.url)/readyz"` → `ready`. The runtime key is not stored in the repo.
 
 Update: bump the tag and `uv tool install --force …@vX.Y.Z --with matplotlib`; rollback with the previous tag.

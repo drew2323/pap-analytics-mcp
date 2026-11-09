@@ -10,22 +10,24 @@ The server runs durably on the VPS (`vpsagentfarma`), sees fresh data after each
 - Source: AirCANnect SMB share on `hnizdo` at `/srv/aircannect`, readable only with `sudo -n` by user `david`; host reachable over Tailscale `100.107.233.0`, SSH key `~/.ssh/hag2_hermes`.
 
 ## Scope
-1. `Dockerfile`: python 3.12-slim, `uv sync --frozen --no-dev`, non-root user, `ENTRYPOINT ["pap"]`, default `serve --http --host 0.0.0.0`, volumes `/data/source` (ro) and `/data/store`, `HEALTHCHECK` on `/healthz`.
-2. `compose.example.yaml`: two services sharing the store volume – `ingest` (`pap ingest --watch 900`) and `mcp` (`pap serve --http --read-only`); source bind-mounted `:ro`; token via Docker secret/file.
-3. **Sync from hnizdo to VPS** (decide in issue, default proposal): systemd timer on VPS running `rsync -a --delete-excluded` over SSH from `hnizdo:/srv/aircannect/` → `/srv/pap-analytics/source/` (read-only for the containers). Requires a read-only path for the rsync user on hnizdo (e.g. group/ACL instead of sudo) – exact access change to be confirmed by David.
-4. Deployment on VPS: Docker Compose or native `uv` + systemd user units (choose by what the VPS already uses for MCP servers; check before deciding). HTTP bound to the Tailscale/loopback interface only, never public.
-5. Hermes integration: register the MCP server in profile `david` (`mcp_servers` with HTTP URL + bearer token from a credential file, or stdio when co-located); verify with a real conversation question.
-6. Create `docs/OPERATIONS.md` (hosts, paths, sync, deploy/update/rollback, backup of store = rebuildable from source, log locations) and one line in `~/Brain/systems/` catalog per Brain rules (outside the repo).
+1. `Dockerfile`: python 3.12-slim, `uv sync --frozen --no-dev` (optional `plot` extra), non-root user, `ENTRYPOINT ["pap"]`, default `serve --http --host 0.0.0.0`, volumes `/data/source` (ro) and `/data/store`, `HEALTHCHECK` on `/healthz`.
+2. `compose.example.yaml`: two services sharing the store volume – `ingest` (`pap ingest --watch`) and `mcp` (`pap serve --http --read-only`); source and config mounted `:ro`; token via Docker secret/file.
+3. **Config + sync (code):** `[[sources]]` gets `name` and an optional `[sources.sync]` block (`type = "rsync"`, `remote`, `ssh_key_file`, `known_hosts_file`, `interval_s`). `pap sync` / `pap ingest` (sync first, `--no-sync`, `--watch`) pull the remote into `path` via a temp sibling directory and atomic rename; pull only, strict pinned host key, last good copy kept on failure; status in `<store_dir>/sync_state.json`, exposed by `list_devices` as `sources[]`. `pap config show` prints the effective config with secrets redacted. Reader/writer lock contention is retried; readers then get a clear "data is being updated" tool error.
+4. **Two equal runtimes over one config:** native (`uv tool install` from a release tag, ingest by a systemd user timer, MCP over stdio) – the production default on `vpsagentfarma` – and Docker (HTTP + bearer token, stdio fallback via `docker compose exec -T`). `deploy/smoke.sh native|docker` verifies each against the committed fixture. HTTP is bound to loopback/Tailscale only, never public.
+5. **Access to the source (hnizdo):** dedicated system user `pap-sync` in group `aircannect` with its own key restricted to `rrsync -ro /srv/aircannect` (`restrict`); private key stays on the VPS; host key pinned. No sudo, nothing writable.
+6. **Clients:** Hermes profile `david` via `mcp_servers.pap` (stdio, `--read-only`); ChatGPT Voice via a `tunnel-client` profile and a user unit running the stdio launcher `deploy/launchers/pap-mcp-stdio` (own tunnel and runtime key, never shared with another service).
+7. `docs/OPERATIONS.md` (hosts, config reference, sync, concurrency, install/update/rollback, troubleshooting, client integration, production setup log) and one line in the `~/Brain/systems/` catalog per Brain rules (outside the repo).
 
 ## Out of scope
 Public internet exposure, multi-user auth, CI deployment pipelines.
 
 ## Files
-`Dockerfile`, `.dockerignore`, `compose.example.yaml`, `deploy/` (systemd units, sync script), `docs/OPERATIONS.md`, README run sections.
+`Dockerfile`, `.dockerignore`, `compose.example.yaml`, `deploy/` (systemd units, launcher, smoke test), `src/pap_analytics/{sync,cli_sync,config}.py` and the wiring they need, `docs/OPERATIONS.md`, README run sections.
 
 ## Acceptance
 - `docker build` succeeds; `docker compose -f compose.example.yaml up` with `tests/data/resmed-air11-autoset` as source → `/healthz` 200 and tool call works with token (scripted smoke test `deploy/smoke.sh`).
-- Local non-Docker run documented and smoke-tested (`uv run pap ingest && uv run pap serve --stdio`).
+- Local non-Docker run documented and smoke-tested (`deploy/smoke.sh native`).
+- Sync tests cover success, failure keeping the last copy, atomic swap, config validation and reader/writer contention.
 - On VPS: after the next night, `list_nights` shows the new day without manual action; service survives reboot.
 - Hermes `david` profile answers "jaká byla poslední noc?" via the MCP tools.
 - `docs/OPERATIONS.md` exists; access changes on hnizdo documented there.
