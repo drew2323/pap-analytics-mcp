@@ -314,3 +314,13 @@ def test_mode_switch_night_does_not_reuse_other_mode_settings(store: Store) -> N
     n = night_summary(store, DEV, date(2026, 11, 8), CTX)
     assert n.mode == "asv" and "applies" not in n.settings
     assert not any("ran in mode" in x for x in n.notes)
+
+def test_asv_family_session_mode_is_compatible_with_asv_auto_settings() -> None:
+    """Issue #15: PLD-derived session mode 'asv' cannot distinguish ASV from ASV Auto, so STR
+    settings of mode 'asv_auto' (EPAP 5-10, PS 0-6) must still apply to such a night."""
+    from pap_analytics.analytics.nights import modes_compatible
+
+    assert modes_compatible("asv", "asv_auto") and modes_compatible("asv", "asv")
+    assert modes_compatible("asv", None) and modes_compatible(None, "asv_auto")
+    assert not modes_compatible("asv", "cpap") and not modes_compatible("cpap", "asv_auto")
+    assert not modes_compatible("apap", "asv")
