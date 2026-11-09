@@ -52,4 +52,4 @@ Deployment: once `docs/OPERATIONS.md` exists (created by WP-10), read it before 
 ## Safety
 
 - Health data: this tool reports analytics, never diagnoses. Keep the disclaimer in MCP glossary/prompt output.
-- Do not touch the AirCANnect device, its firmware, the SMB share on `hnizdo` or any server unless your work package explicitly includes it. Deployment/infrastructure changes (WP-10) need David's confirmation in the issue.
+- Do not touch the AirCANnect device, its firmware, the SMB share on the source host or any server unless your work package explicitly includes it. Deployment/infrastructure changes (WP-10) need David's confirmation in the issue.

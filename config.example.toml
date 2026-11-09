@@ -14,7 +14,7 @@ timezone = "Europe/Prague"
 # Optional: pull the data into `path` from another host (omit if `path` is already local).
 # [sources.sync]
 # type = "rsync"                                   # only rsync in v1
-# remote = "pap-sync@hnizdo:/srv/aircannect/"
+# remote = "pap-sync@nas:/"                      # rrsync-restricted user, see docs/OPERATIONS.md
 # ssh_key_file = "/etc/pap-analytics/sync_ed25519" # Docker: /run/secrets/pap_sync_key
 # known_hosts_file = "/etc/pap-analytics/known_hosts"
 # interval_s = 900                                 # used by `pap ingest --watch`
