@@ -39,10 +39,10 @@ Mapping labels to canonical channels, units conversion, timezone handling (WP-03
 `src/pap_analytics/edf/__init__.py`, `edf/reader.py`, `edf/crc.py`, `tests/test_edf_reader.py`, `tests/edf_synth.py` (small synthetic EDF writer for edge cases only).
 
 ## Acceptance (real data, `tests/data/resmed-air11-autoset`)
-- All 232 `.edf` files open without exception; zero unexpected warnings except documented truncations.
+- All 216 `.edf` files open without exception; zero unexpected warnings except documented truncations.
 - `20261108_233938_PLD.edf`: 12 signals (Crc16 excluded) with labels/units exactly as in `tests/data/README.md`; rate 0.5 Hz; record duration 60 s.
 - BRP: `Flow.40ms` rate 25 Hz, values within physical min/max.
 - SA2 on 20261108: valid SpO2 (50–100) seconds = 22549 of 22860, min 89 (matches README).
-- EVE annotations over whole set: Hypopnea 133, Apnea 20, Central Apnea 1, Arousal 1, Recording starts 46; timekeeping TALs not returned as events; no stray `+0`/garbage texts.
+- EVE annotations over whole set: Hypopnea 129, Apnea 19, Central Apnea 1, Arousal 1, Recording starts 43; timekeeping TALs not returned as events; no stray `+0`/garbage texts.
 - `STR.edf` (both sets): opens; record count 1 resp. 10.
 - Synthetic: truncated last record, `n_records=-1`, two-digit-year boundary, multi-text TAL.

@@ -38,5 +38,5 @@ Scheduling on a server (WP-10), analytics.
 - Second ingest: all unchanged, < 3 s on CI.
 - Touching (mtime) one session's PLD → exactly one updated.
 - Ingest `resmed-air11-str-20261016` STR then `resmed-air11-autoset`: store has device days 2026-10-16…25 **and** 2026-11-08 (upsert keeps days from both sources).
-- `pap doctor tests/data/resmed-air11-autoset --json` lists device AirSense11AutoSet, 22 folders, oximetry on the 8 days listed in `tests/data/README.md`.
+- `pap doctor tests/data/resmed-air11-autoset --json` lists device AirSense11AutoSet, 21 folders, oximetry on the 7 days listed in `tests/data/README.md`.
 - Source directory unchanged after ingest (compare checksums).
