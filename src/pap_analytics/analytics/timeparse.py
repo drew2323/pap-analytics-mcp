@@ -7,6 +7,7 @@ means 2026-11-09 02:10. All returned datetimes are timezone-aware UTC.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -22,11 +23,13 @@ class Context:
     tz: ZoneInfo = field(default_factory=lambda: ZoneInfo("Europe/Prague"))
     boundary_hour: int = 12
     large_leak_lps: float = 0.4  # ≈ 24 L/min
+    thresholds: Mapping[str, float] = field(default_factory=dict)  # oximetry etc., see config
 
     @classmethod
     def from_config(cls, config: Config) -> Context:
         tz = ZoneInfo(config.sources[0].timezone) if config.sources else ZoneInfo("Europe/Prague")
-        return cls(tz, config.day_boundary_hour, float(config.thresholds.get("large_leak_lps", 0.4)))
+        th = config.thresholds
+        return cls(tz, config.day_boundary_hour, float(th.get("large_leak_lps", 0.4)), dict(th))
 
 
 def day_window(day: date, ctx: Context) -> tuple[datetime, datetime]:

@@ -190,12 +190,12 @@ def night_summary(store: Store, device_id: str, day: date, ctx: Context | None =
     else:
         notes.append("no settings known for this day")
     oximetry = None
-    try:
-        from pap_analytics.analytics import oximetry as ox  # WP-07, optional
-    except ImportError:
-        ox = None
-    if ox is not None and sessions and _has_oximetry(store, device_id, sessions):
+    if sessions:
+        from pap_analytics.analytics import oximetry as ox  # local import: oximetry builds on this module
+
         oximetry = ox.night_oximetry(store, device_id, day, ctx)
+        if oximetry is None:
+            notes.append("no valid SpO2 data for this day")
     session_rows = [
         {"id": s.id, "start": s.start, "end": s.end, "minutes": (s.end - s.start).total_seconds() / 60,
          "complete": s.complete, "channels": list(s.channels)} for s in sessions
