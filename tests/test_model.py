@@ -36,7 +36,7 @@ def test_session_id_uses_utc() -> None:
 
 
 def test_constants_and_channeldata() -> None:
-    assert SCHEMA_VERSION == 1
+    assert SCHEMA_VERSION == 2
     assert CHANNELS["flow"] == "L/s" and CHANNELS["spo2"] == "%"
     assert EventType("hypopnea") is EventType.HYPOPNEA
     ch = ChannelData("flow", "L/s", 25.0, datetime(2026, 1, 1, tzinfo=UTC), np.zeros(3, dtype=np.float32))

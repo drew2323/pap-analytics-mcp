@@ -43,7 +43,7 @@ Vendor-neutral; units fixed below. Every persisted change bumps `SCHEMA_VERSION`
 | Entity | Key fields |
 |---|---|
 | `Device` | `id` (vendor+serial), `vendor`, `model`, `model_code`, `serial`, `firmware`, `source_kind` |
-| `Session` | `id`, `device_id`, `therapy_day`, `start`, `end` (tz-aware), `complete: bool`, `fingerprint`, `source_files` |
+| `Session` | `id`, `device_id`, `therapy_day`, `start`, `end` (tz-aware), `complete: bool`, `fingerprint`, `source_files`, `mode` (therapy mode the session ran in, from its recorded data; `None` = unknown) |
 | `Channel` | `session_id`, `name` (canonical), `unit`, `rate_hz`, `start`, `values: float32[]` (NaN = missing) |
 | `Event` | `session_id`, `start`, `duration_s`, `type` (canonical), `raw_type`, `provenance` |
 | `TherapyDay` | `device_id`, `date`, `usage_s`, `mask_intervals`, `metrics: dict[str, Metric]` |
@@ -53,6 +53,8 @@ Vendor-neutral; units fixed below. Every persisted change bumps `SCHEMA_VERSION`
 **Canonical channels:** `flow` L/s, `pressure` cmH2O (device delivered, low-rate, used for statistics), `pressure_hr` cmH2O (same at waveform rate, windows only), `mask_pressure` cmH2O, `epap` cmH2O, `leak` L/s, `resp_rate` 1/min, `tidal_volume` mL, `minute_vent` L/min, `target_vent` L/min, `ie_ratio`, `ti` s, `snore` (vendor scale), `flow_limitation` 0–1, `spo2` %, `pulse` 1/min.
 
 **Canonical event types:** `obstructive_apnea`, `central_apnea`, `apnea` (unclassified), `hypopnea`, `rera`, `arousal`, `flow_limitation`, `csr` (span), `periodic_breathing` (span), `large_leak` (span), `desaturation` (derived only), `recording_start`, `other` (with `raw_type`).
+
+**Therapy mode (invariant):** the mode is taken from the data per session (`Session.mode`), not from the device model and not from the newest settings – a device may run any mode and be switched between nights. `Settings` are change points known only for days the vendor summary covers; analytics mark settings whose mode differs from the night's session mode as not applying (`applies: false` + note) instead of presenting them as that night's settings.
 
 Unknown raw channels/events are never silently dropped: they map to `other`/are listed in the adapter's `warnings`.
 

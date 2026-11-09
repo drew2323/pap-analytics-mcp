@@ -298,3 +298,19 @@ def test_get_signal_accepts_alias(store: Store) -> None:
     a = _night_start(store) + timedelta(minutes=30)
     r = get_signal(store, DEV, a, a + timedelta(minutes=1), "mask_pressure_hr", max_points=100000)
     assert r.channel == "pressure_hr" and r.bucket_s == pytest.approx(0.04)
+
+
+def test_mode_switch_night_does_not_reuse_other_mode_settings(store: Store) -> None:
+    """2026-11-03 ran in CPAP (see test_session_mode_from_recorded_data); the latest STR settings
+    before it are ASV (2026-10-23) and must not be presented as this night's settings."""
+    n = night_summary(store, DEV, date(2026, 11, 3), CTX)
+    assert n.mode == "cpap"
+    assert n.settings is not None and n.settings["mode"] == "asv" and n.settings["applies"] is False
+    assert any("ran in mode 'cpap'" in x for x in n.notes)
+    assert any("different modes" in x for x in n.notes)  # 1 min ASV fragment that evening
+    assert {r["mode"] for r in n.sessions} == {None, "cpap", "asv"}
+    (row,) = list_nights(store, DEV, date(2026, 11, 3), date(2026, 11, 3), CTX)
+    assert row.mode == "cpap"
+    n = night_summary(store, DEV, date(2026, 11, 8), CTX)
+    assert n.mode == "asv" and "applies" not in n.settings
+    assert not any("ran in mode" in x for x in n.notes)

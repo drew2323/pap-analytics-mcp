@@ -20,7 +20,7 @@ Expose analytics to agents via MCP, over stdio and streamable HTTP, with small t
 | `get_signal` | `date`, `start`, `end`, `channel`, `max_points=300` | cap 2000 |
 | `oximetry_summary` | `date`, `start?`, `end?` | |
 | `compare_periods` | `a_from`, `a_to`, `b_from`, `b_to` | |
-| `get_settings` | `date?` | settings in effect / history |
+| `get_settings` | `date?` | settings in effect (+ `session_mode`, `applies: false` and a note when the night ran in another mode) / history |
 | `ingest` | `source?` | admin; **not registered** with `--read-only` |
 
    `device_id` optional everywhere: if exactly one device exists use it, else return an error listing devices.

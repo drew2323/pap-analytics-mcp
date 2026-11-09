@@ -69,6 +69,9 @@ def test_round_trip(store: Store) -> None:
     )
     assert info.therapy_day == date(2026, 11, 8) and info.source_files == ("DATALOG/x.edf",)
     assert info.channels == ("flow", "pressure", "spo2")
+    assert info.mode is None
+    store.replace_session(Session(**{**s.__dict__, "mode": "cpap"}))
+    assert store.sessions("resmed-1")[0].mode == "cpap"
     for ch in s.channels:
         (got,) = store.channel_window("resmed-1", ch.name, T0 - timedelta(hours=1), T0 + timedelta(hours=1))
         assert got.values.dtype == np.float32

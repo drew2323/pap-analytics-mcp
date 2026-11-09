@@ -48,7 +48,7 @@ CREATE TABLE meta(schema_version INTEGER);
 CREATE TABLE devices(id VARCHAR PRIMARY KEY, vendor VARCHAR, model VARCHAR, model_code VARCHAR,
     serial VARCHAR, firmware VARCHAR, source_kind VARCHAR);
 CREATE TABLE sessions(id VARCHAR PRIMARY KEY, device_id VARCHAR, therapy_day DATE, start TIMESTAMP,
-    "end" TIMESTAMP, complete BOOLEAN, fingerprint VARCHAR, source_files VARCHAR);
+    "end" TIMESTAMP, complete BOOLEAN, fingerprint VARCHAR, source_files VARCHAR, mode VARCHAR);
 CREATE TABLE channels(session_id VARCHAR, name VARCHAR, unit VARCHAR, rate_hz DOUBLE, start TIMESTAMP,
     n_samples BIGINT, path VARCHAR);
 CREATE TABLE events(session_id VARCHAR, device_id VARCHAR, start TIMESTAMP, duration_s DOUBLE,
@@ -206,9 +206,9 @@ class Store:
                 con.execute("BEGIN")
                 try:
                     self._delete_rows(con, s.id)
-                    con.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?)",
+                    con.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?)",
                                 [s.id, s.device_id, s.therapy_day, _db(s.start), _db(s.end), s.complete,
-                                 s.fingerprint, json.dumps(list(s.source_files))])  # fmt: skip
+                                 s.fingerprint, json.dumps(list(s.source_files)), s.mode])  # fmt: skip
                     if rows:
                         con.executemany("INSERT INTO channels VALUES (?,?,?,?,?,?,?)", rows)
                     if s.events:
@@ -311,7 +311,8 @@ class Store:
             args.append(day_to)
         sql = (
             'SELECT s.id, s.device_id, s.therapy_day, s.start, s."end", s.complete, s.fingerprint, '
-            "s.source_files, COALESCE(list(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL), []) "
+            "s.source_files, COALESCE(list(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL), []), "
+            "s.mode "
             "FROM sessions s LEFT JOIN channels c ON c.session_id = s.id "
             f"WHERE {' AND '.join(where)} GROUP BY ALL ORDER BY s.start"
         )
@@ -319,7 +320,8 @@ class Store:
             rows = con.execute(sql, args).fetchall()
         return [
             SessionInfo(
-                r[0], r[1], r[2], _py(r[3]), _py(r[4]), r[5], r[6], tuple(json.loads(r[7])), tuple(r[8])
+                r[0], r[1], r[2], _py(r[3]), _py(r[4]), r[5], r[6], tuple(json.loads(r[7])), tuple(r[8]),
+                r[9],
             )
             for r in rows
         ]

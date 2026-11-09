@@ -37,6 +37,7 @@ class Event: start: datetime; duration_s: float; type: EventType; raw_type: str;
 class Session: id: str; device_id: str; therapy_day: date; start: datetime; end: datetime
                complete: bool; fingerprint: str; source_files: tuple[str, ...]
                channels: tuple[ChannelData, ...]; events: tuple[Event, ...]
+               mode: str | None = None  # mode the session ran in, from its data
 
 @dataclass(frozen=True)
 class TherapyDay: device_id: str; date: date; usage_s: float | None

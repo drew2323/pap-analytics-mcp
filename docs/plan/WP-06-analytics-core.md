@@ -27,11 +27,12 @@ Modules in `src/pap_analytics/analytics/`:
 @dataclass class NightRow: date: date; usage_min: Metric; sessions: int; ahi_device: Metric|None
                            ahi_derived: Metric; events: dict[str,int]; leak_p95: Metric|None
                            pressure_p95: Metric|None; has_oximetry: bool
+                           usage_min_derived: Metric|None = None; mode: str|None = None
 @dataclass class NightSummary: date: date; device_id: str; sessions: list[dict]; mask_off_gaps: list[dict]
                                events_by_type: dict[str,int]; events_per_hour: list[dict]
                                device_metrics: dict[str,Metric]; derived_metrics: dict[str,Metric]
                                channels: dict[str,StatBlock]; settings: dict|None; oximetry: dict|None
-                               notes: list[str]
+                               notes: list[str]; mode: str|None = None
 @dataclass class SegmentStats: start: datetime; end: datetime; channels: dict[str,StatBlock]
                                events: list[dict]; notes: list[str]
 @dataclass class SeriesResult: channel: str; unit: str; start: datetime; bucket_s: float

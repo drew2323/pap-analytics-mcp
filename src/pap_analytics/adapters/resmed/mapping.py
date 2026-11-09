@@ -32,6 +32,9 @@ CHANNEL_MAP: dict[str, tuple[str, float]] = {
 SANITIZERS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "spo2": lambda v: np.where((v >= 50) & (v <= 100), v, np.nan),
     "pulse": lambda v: np.where(v > 0, v, np.nan),
+    # negative = "not recorded in this mode" (TgtVent -0.12 outside ASV, IERatio -1 in ASV)
+    "target_vent": lambda v: np.where(v >= 0, v, np.nan),
+    "ie_ratio": lambda v: np.where(v >= 0, v, np.nan),
 }
 
 EVENT_MAP: dict[str, EventType] = {
@@ -73,3 +76,30 @@ def mode_name(code: int | None) -> str | None:
     if code is None:
         return None
     return MODE_MAP.get(code, f"unknown_{code}")
+
+
+def session_mode(channels: dict[str, np.ndarray]) -> str | None:
+    """Therapy mode a session actually ran in, read from its sanitised PLD channels (derived).
+
+    STR only knows the mode per day (and the AirCANnect share keeps few STR records), while a
+    device with all modes enabled can be switched between sessions. The device records
+    ``TgtVent`` only in ASV modes and ``IERatio`` only outside them (verified on the author's
+    AirSense 11: ASV nights vs. the CPAP 4.0 night 2026-11-03). Without ``TgtVent`` the mode is
+    ``cpap`` when ``Press.2s`` sits at one value for >= 80 % of the session (ramp tolerated), else
+    ``apap``. ASV vs. ASVAuto and the bilevel variants are not distinguished (``asv``/None).
+    """
+    p = channels.get("pressure")
+    if p is None:
+        return None
+    ok = np.isfinite(p)
+    if ok.sum() < 15:  # < 30 s of 2 s samples: nothing recorded
+        return None
+    tv, ie = channels.get("target_vent"), channels.get("ie_ratio")
+    tv_share = float(np.isfinite(tv[ok]).mean()) if tv is not None and len(tv) == len(p) else 0.0
+    ie_share = float(np.isfinite(ie[ok]).mean()) if ie is not None and len(ie) == len(p) else 0.0
+    if tv_share >= 0.5:
+        return "asv"
+    if ie_share < 0.5:
+        return None
+    _, counts = np.unique(np.round(p[ok], 1), return_counts=True)
+    return "cpap" if counts.max() / ok.sum() >= 0.8 else "apap"

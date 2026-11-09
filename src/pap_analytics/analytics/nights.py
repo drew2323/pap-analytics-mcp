@@ -37,6 +37,37 @@ def _session_minutes(sessions: list[SessionInfo]) -> float:
     return sum((s.end - s.start).total_seconds() for s in sessions) / 60
 
 
+def night_mode(sessions: list[SessionInfo]) -> tuple[str | None, dict[str, float]]:
+    """Mode the night ran in (the one with the longest total session time) and minutes per mode."""
+    minutes: dict[str, float] = {}
+    for s in sessions:
+        if s.mode:
+            minutes[s.mode] = minutes.get(s.mode, 0.0) + (s.end - s.start).total_seconds() / 60
+    if not minutes:
+        return None, {}
+    return max(minutes, key=lambda m: minutes[m]), dict(sorted(minutes.items()))
+
+
+def settings_in_effect(
+    store: Store, device_id: str, day: date, mode: str | None
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Latest settings change point on or before ``day``, plus notes. Settings whose mode differs from
+    the mode recorded in the night's sessions are returned with ``applies=False``: the device was
+    switched between the settings snapshot and this night, so their values do not describe it."""
+    history = [s for s in store.settings(device_id) if s.valid_from <= day]
+    if not history:
+        return None, ["no settings known for this day"]
+    s = history[-1]
+    out: dict[str, Any] = {"valid_from": s.valid_from, "mode": s.mode, "values": s.values}
+    if mode is None or s.mode is None or s.mode == mode:
+        return out, []
+    out["applies"] = False
+    return out, [
+        f"the sessions of this night ran in mode {mode!r}, but the latest known settings "
+        f"(from {s.valid_from.isoformat()}) are for mode {s.mode!r}; their values do not apply to this night"
+    ]
+
+
 def _ahi(events: list[Event], usage_min: float | None) -> Metric:
     n = sum(1 for e in events if e.type in AHI_TYPES)
     value = n / (usage_min / 60) if usage_min else None
@@ -99,6 +130,7 @@ def _row(
         pressure,
         _has_oximetry(store, device_id, sessions),
         derived_usage if dev_usage is not None and der_usage else None,
+        night_mode(sessions)[0],
     )
 
 
@@ -182,13 +214,12 @@ def night_summary(store: Store, device_id: str, day: date, ctx: Context | None =
             derived["large_leak_min"] = _derived(
                 seconds_above(leak, ctx.large_leak_lps) / 60, "min", f"leak > {ctx.large_leak_lps} L/s"
             )
-    settings = None
-    history = [s for s in store.settings(device_id) if s.valid_from <= day]
-    if history:
-        s = history[-1]
-        settings = {"valid_from": s.valid_from, "mode": s.mode, "values": s.values}
-    else:
-        notes.append("no settings known for this day")
+    mode, mode_minutes = night_mode(sessions)
+    if len(mode_minutes) > 1:
+        notes.append("sessions ran in different modes: "
+                     + ", ".join(f"{m} {v:.0f} min" for m, v in mode_minutes.items()))  # fmt: skip
+    settings, settings_notes = settings_in_effect(store, device_id, day, mode)
+    notes += settings_notes
     oximetry = None
     if sessions:
         from pap_analytics.analytics import oximetry as ox  # local import: oximetry builds on this module
@@ -198,9 +229,10 @@ def night_summary(store: Store, device_id: str, day: date, ctx: Context | None =
             notes.append("no valid SpO2 data for this day")
     session_rows = [
         {"id": s.id, "start": s.start, "end": s.end, "minutes": (s.end - s.start).total_seconds() / 60,
-         "complete": s.complete, "channels": list(s.channels)} for s in sessions
+         "complete": s.complete, "mode": s.mode, "channels": list(s.channels)} for s in sessions
     ]  # fmt: skip
     return NightSummary(
         day, device_id, session_rows, _mask_off_gaps(sessions), _count(events),
         _events_per_hour(events, sessions, ctx), device_metrics, derived, channels, settings, oximetry, notes,
+        mode,
     )  # fmt: skip
