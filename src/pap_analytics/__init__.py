@@ -1,3 +1,3 @@
 """PAP therapy data analytics for AI agents (MCP)."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
