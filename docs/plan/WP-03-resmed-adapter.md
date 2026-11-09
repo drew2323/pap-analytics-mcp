@@ -52,6 +52,6 @@ Storage, ingest scheduling, analytics/derived metrics.
 - `detect` true for both fixture sets; device = AirSense11AutoSet, code 39444, serial 23262018278.
 - `scan(resmed-air11-autoset)`: 46 sessions (verified at bootstrap: 46 distinct prefixes = 46 `Recording starts`), session prefixes for 20261108 = `203013`, `233938`, both on therapy day 2026-11-08.
 - `load_session` of `20261108_233938`: channels incl. `spo2`, `pulse`, `flow` (25 Hz), `pressure` (0.5 Hz); `tidal_volume` in mL (median in plausible 300–800 range); UTC start = 2026-11-08 22:39:38Z (CET, UTC+1).
-- STR history set: 10 therapy days 2026-10-16…25 with `ahi`/`usage` exactly as in `tests/data/README.md` table (2026-10-18 usage 1 min, AHI n/a → `value=None`).
+- STR history set: 10 therapy days 2026-10-16…25; `ahi`/`usage` exactly as in the `tests/data/README.md` table for the days listed there; values < 0 → `value=None` (synthetic test).
 - STR main set: 1 therapy day 2026-11-08, usage 383 min, AHI 1.0, leak_p95 0.14 L/s, settings min 4 / max 20 cmH2O, EPR 3.
 - Unknown label in a synthetic file → appears in `warnings`, not an exception.

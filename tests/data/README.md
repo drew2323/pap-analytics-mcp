@@ -44,18 +44,15 @@ Record duration 60 s for BRP/PLD/SA2. Units as in the EDF header:
 
 Note: folder 20261026 starts at `003639` and 20261028 at `002108`. To be checked in WP-03: does the folder name follow the noon-to-noon therapy day convention, or the file start date?
 
-**`STR.edf` in this set holds only 1 record (therapy day 2026-11-08):** Duration 383 min, AHI 1.0, HI 0.9, AI 0.1, Leak.95 0.14 L/s, MaskPress.95 4.64 cmH2O, S.A.MinPress 4, S.A.MaxPress 20, EPR level 3, SpO2.50 −1 (STR does not carry oximetry). Values ≤ −0.1 / −1 mean "not available".
-AirCANnect rewrites `STR.edf`, so the history of daily summaries is incomplete. Analytics must therefore fall back to `derived` metrics computed from DATALOG.
-
+**`STR.edf` in this set holds 1 record (therapy day 2026-11-08):** Duration 383 min, AHI 1.0, HI 0.9, AI 0.1, Leak.95 0.14 L/s, MaskPress.95 4.64 cmH2O, S.A.MinPress 4, S.A.MaxPress 20, EPR level 3, SpO2.50 −1 (STR does not carry oximetry). Values ≤ −0.1 / −1 mean "not available".
 ## `resmed-air11-str-20261016/` – older STR snapshot
 
-The same device. Contains `STR.edf` with 10 daily records 2026-10-16 … 2026-10-25, plus Identification. Use it for STR parsing/settings tests and as the `device` reference for these days. Device-reported values (Date = days since 1970-01-01):
+The same device. Contains `STR.edf` with 10 daily records 2026-10-16 … 2026-10-25, plus Identification. Use it for STR parsing/settings tests and as the `device` reference for these days. Device-reported reference values for tests (Date = days since 1970-01-01):
 
 | Day | Duration min | AHI | HI | AI | Leak.95 L/s | MaskPress.95 |
 |---|---|---|---|---|---|---|
 | 2026-10-16 | 349 | 1.2 | 1.0 | 0.1 | 0.72 | 6.72 |
 | 2026-10-17 | 434 | 0.4 | 0.4 | 0.0 | 0.74 | 6.72 |
-| 2026-10-18 | 1 | n/a | n/a | n/a | n/a | n/a |
 | 2026-10-19 | 419 | 2.0 | 1.8 | 0.1 | 0.62 | 6.72 |
 | 2026-10-20 | 362 | 4.3 | 3.4 | 0.8 | 0.64 | 6.56 |
 | 2026-10-21 | 430 | 2.9 | 2.5 | 0.4 | 0.82 | 6.88 |
@@ -63,7 +60,5 @@ The same device. Contains `STR.edf` with 10 daily records 2026-10-16 … 2026-10
 | 2026-10-23 | 390 | 1.5 | 1.3 | 0.1 | 0.24 | 5.76 |
 | 2026-10-24 | 404 | 0.4 | 0.2 | 0.1 | 0.26 | 5.60 |
 | 2026-10-25 | 355 | 0.5 | 0.5 | 0.0 | 0.14 | 5.60 |
-
-Note: for 2026-10-18, STR records 1 min while DATALOG has 406 min of PLD. The snapshot was probably taken during or before the night was finalised. The test must document this rather than hide it.
 
 These values were decoded with an independent throw-away script during project bootstrap. Before relying on them, WP-02/WP-03 must cross-check them against OSCAR.

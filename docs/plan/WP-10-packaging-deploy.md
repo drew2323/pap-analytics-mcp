@@ -8,7 +8,6 @@ The server runs durably on the VPS (`vpsagentfarma`), sees fresh data after each
 
 ## Context (verified at bootstrap)
 - Source: AirCANnect SMB share on `hnizdo` at `/srv/aircannect`, readable only with `sudo -n` by user `david`; host reachable over Tailscale `100.107.233.0`, SSH key `~/.ssh/hag2_hermes`.
-- The device rewrites `STR.edf` (only the latest day). That is why the store must keep the history (merge in WP-05).
 
 ## Scope
 1. `Dockerfile`: python 3.12-slim, `uv sync --frozen --no-dev`, non-root user, `ENTRYPOINT ["pap"]`, default `serve --http --host 0.0.0.0`, volumes `/data/source` (ro) and `/data/store`, `HEALTHCHECK` on `/healthz`.

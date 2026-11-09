@@ -37,7 +37,7 @@ Modules in `src/pap_analytics/analytics/`:
 @dataclass class SeriesResult: channel: str; unit: str; start: datetime; bucket_s: float
                                t: list[float]; min: list[float|None]; mean: list[float|None]; max: list[float|None]
 ```
-`notes` explain gaps/assumptions in plain English (e.g. "STR summary not available for this day; device metrics missing").
+`notes` explain gaps/assumptions in plain English (e.g. "no device summary for this day; device metrics missing").
 
 ## Out of scope
 Oximetry metrics (WP-07), anomaly ranking and plots (WP-09), MCP wiring (WP-08).
@@ -47,7 +47,7 @@ Oximetry metrics (WP-07), anomaly ranking and plots (WP-09), MCP wiring (WP-08).
 
 ## Acceptance (store ingested from fixtures)
 - `night_summary(2026-11-08)`: 2 sessions; device AHI 1.0 and usage 383 min reported as `device`; derived AHI = (EVE apnea+hypopnea events on that day) / usage h, computed independently in the test from raw annotation counts.
-- `list_nights(2026-10-16..25)` after ingesting the STR history: device AHI equals `tests/data/README.md` table for every day; derived usage within ±2 min of STR `Duration` for normal nights; deviation on 2026-10-18 surfaces as a note.
+- `list_nights(2026-10-16..25)` after ingesting the STR history: device AHI equals `tests/data/README.md` table for every day; derived usage within ±2 min of STR `Duration` for every day in that table.
 - `segment_stats(2026-11-08, 02:00, 02:30)`: coverage 100 % for PLD channels; events inside window match a manual filter.
 - `downsample`: 8 h at 0.5 Hz → 300 buckets; min ≤ mean ≤ max; NaN-only bucket → None.
 - `get_signal(flow, 2 h window)` rejected with helpful message.

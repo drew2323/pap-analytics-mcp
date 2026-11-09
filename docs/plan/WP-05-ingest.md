@@ -9,7 +9,7 @@ Bring a source directory into the store incrementally and idempotently; give a h
 1. `ingest.py`: `ingest(config, *, source: Path | None = None, rebuild: bool = False) -> IngestReport`:
    - for each configured source (or the given one): `adapters.detect` → `device` → `scan`;
    - compare fingerprints with `store.session_fingerprints`; load + `replace_session` only new/changed sessions; sessions whose files disappeared from the source are **kept** (source may be a pruned SD card) unless `--prune`;
-   - always refresh `therapy_days` and `settings` from the source, but **merge**: never delete device-reported days already in the store that the current STR no longer contains (AirCANnect rewrites `STR.edf`, see `tests/data/README.md`);
+   - refresh `therapy_days` and `settings` from the source as upserts keyed by (device, date); days already in the store but absent from the current source are kept (same rule as sessions, removed only with `--prune`);
    - per-session failure → logged in report + `ingest_log`, ingest continues;
    - holds the store write lock for the whole run.
 2. CLI `pap ingest [--source PATH] [--rebuild] [--prune] [--json]` – human summary or JSON report.
@@ -37,6 +37,6 @@ Scheduling on a server (WP-10), analytics.
 - First ingest of `resmed-air11-autoset`: sessions_added = number from WP-03 scan, failed = 0.
 - Second ingest: all unchanged, < 3 s on CI.
 - Touching (mtime) one session's PLD → exactly one updated.
-- Ingest `resmed-air11-str-20261016` STR then `resmed-air11-autoset`: store has device days 2026-10-16…25 **and** 2026-11-08 (merge, nothing lost).
+- Ingest `resmed-air11-str-20261016` STR then `resmed-air11-autoset`: store has device days 2026-10-16…25 **and** 2026-11-08 (upsert keeps days from both sources).
 - `pap doctor tests/data/resmed-air11-autoset --json` lists device AirSense11AutoSet, 22 folders, oximetry on the 8 days listed in `tests/data/README.md`.
 - Source directory unchanged after ingest (compare checksums).
