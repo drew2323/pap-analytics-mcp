@@ -15,10 +15,18 @@ import numpy as np
 from pap_analytics import adapters, cli
 from pap_analytics.config import Config, SourceConfig
 from pap_analytics.ingest import ingest
+from pap_analytics.sync import sleep_interval, sync_all
 
 
 def _ingest_cmd(args: argparse.Namespace, config: Config) -> int:
     def run() -> int:
+        sync_failed = False
+        if not args.no_sync and not args.source:
+            for r in sync_all(config):
+                if not r.ok:
+                    sync_failed = True
+                    age = f"{r.data_age_s / 3600:.1f} h" if r.data_age_s is not None else "unknown"
+                    print(f"warning: sync of {r.source} failed ({r.error}); last good copy, age {age}")
         reports = ingest(
             config,
             source=Path(args.source) if args.source else None,
@@ -38,15 +46,14 @@ def _ingest_cmd(args: argparse.Namespace, config: Config) -> int:
                     print(f"  warning: {w}")
                 for e in r.errors:
                     print(f"  ERROR: {e}")
-        return 1 if any(r.errors for r in reports) else 0
+        return 1 if any(r.errors for r in reports) or sync_failed else 0
 
-    if not args.watch:
+    if args.watch is None:
         return run()
-    rc = 0
+    interval = sleep_interval(config) if args.watch < 0 else args.watch
     while True:  # simple sleep loop for Docker
-        rc = run()
-        time.sleep(args.watch)
-    return rc  # pragma: no cover
+        run()
+        time.sleep(interval)
 
 
 def doctor_report(path: Path, tz_name: str = "Europe/Prague", boundary: int = 12) -> dict[str, Any]:
@@ -122,7 +129,11 @@ def register(subparsers: Any) -> None:
     p.add_argument("--rebuild", action="store_true", help="wipe the store first")
     p.add_argument("--prune", action="store_true", help="remove store data missing from the source")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--watch", type=float, metavar="SECONDS", help="repeat every SECONDS")
+    p.add_argument("--no-sync", action="store_true", help="skip the sync step of sources that have one")
+    p.add_argument(
+        "--watch", nargs="?", type=float, const=-1, default=None, metavar="SECONDS",
+        help="repeat (sync + ingest); interval SECONDS, default the smallest sources.sync.interval_s",
+    )  # fmt: skip
     p.set_defaults(func=_ingest_cmd)
     d = subparsers.add_parser("doctor", help="inspect a source directory (no store needed)")
     d.add_argument("path")

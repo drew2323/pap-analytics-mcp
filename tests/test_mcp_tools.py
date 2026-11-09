@@ -157,3 +157,30 @@ async def test_ingest_tool_and_new_data_visible_without_restart(
         assert not res.isError and d["reports"][0]["therapy_days"] == 10
         res, d = await call(s, "list_devices")
         assert d["devices"][0]["last_day"] == "2026-10-25"
+
+
+async def test_list_devices_reports_sync_and_ingest_status(ingested_store: Path, tmp_path: Path) -> None:
+    import json as _json
+
+    from pap_analytics.config import SourceConfig, SyncConfig
+    from pap_analytics.sync import STATE_FILE
+
+    sy = SyncConfig("r:/x/", tmp_path / "k", tmp_path / "h")
+    src = SourceConfig(path=tmp_path / "s", name="aircannect", sync=sy)
+    plain = SourceConfig(path=tmp_path / "p", name="local")
+    store_dir = tmp_path / "st"
+    import shutil
+
+    shutil.copytree(ingested_store, store_dir)
+    (store_dir / STATE_FILE).write_text(
+        _json.dumps({"aircannect": {"last_sync_at": "2026-11-09T06:00:00+00:00", "last_sync_ok": False,
+                                    "error": "boom"}})
+    )  # fmt: skip
+    server = build_server(Config(sources=[src, plain], store_dir=store_dir))
+    async with create_connected_server_and_client_session(server._mcp_server) as s:
+        _, d = await call(s, "list_devices")
+    a, b = d["sources"]
+    assert a["name"] == "aircannect" and a["has_sync"] and a["last_sync_ok"] is False
+    assert a["last_sync_at"].startswith("2026-11-09T06:00") and a["last_sync_error"] == "boom"
+    assert a["last_ingest_at"] and a["newest_therapy_day"] == "2026-11-08"
+    assert b["has_sync"] is False and b["last_sync_at"] is None and b["last_sync_ok"] is None

@@ -37,6 +37,7 @@ from pap_analytics.store.types import (
     IngestLogEntry,
     SchemaMismatchError,
     SessionInfo,
+    StoreLockedError,
     StoreReadOnlyError,
 )
 
@@ -76,6 +77,12 @@ def _py(ts: datetime) -> datetime:
 
 def safe_name(session_id: str) -> str:
     return session_id.replace(":", "_").replace("/", "_")
+
+
+READ_RETRIES = 5  # bounded retry for readers while a writer commits
+READ_RETRY_S = 0.2
+WRITE_RETRIES = 200
+WRITE_RETRY_S = 0.1
 
 
 class Store:
@@ -146,15 +153,19 @@ class Store:
     @contextmanager
     def _conn(self) -> Iterator[duckdb.DuckDBPyConnection]:
         path = str(self.dir / CATALOG)
-        for attempt in range(20):
+        # Readers: bounded retry, then a clear error. Writer: DuckDB refuses to open for writing while a
+        # reader process holds the file (readers hold it only per query), so retry for longer.
+        retries, delay = (READ_RETRIES, READ_RETRY_S) if self.read_only else (WRITE_RETRIES, WRITE_RETRY_S)
+        for attempt in range(retries):
             try:
                 con = duckdb.connect(path, read_only=self.read_only)
                 break
-            except duckdb.IOException:
-                # a writer in another process currently holds the database; retry briefly
-                if not self.read_only or attempt == 19:
-                    raise
-                time.sleep(0.05)
+            except duckdb.IOException as exc:
+                if attempt == retries - 1:
+                    if self.read_only:
+                        raise StoreLockedError("data is being updated, retry in a few seconds") from exc
+                    raise StoreLockedError(f"store is busy (readers hold it): {exc}") from exc
+                time.sleep(delay)
         try:
             yield con
         finally:

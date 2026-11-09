@@ -22,7 +22,8 @@ from pap_analytics.analytics import oximetry as ox
 from pap_analytics.analytics.timeparse import day_window, resolve_device
 from pap_analytics.config import Config
 from pap_analytics.model import CHANNELS, EventType
-from pap_analytics.store import SchemaMismatchError, Store
+from pap_analytics.store import SchemaMismatchError, Store, StoreLockedError
+from pap_analytics.sync import read_state as read_sync_state
 
 DISCLAIMER = (
     "Analytical output only, not a diagnosis. Discuss clinical questions with the treating physician."
@@ -54,6 +55,27 @@ side by side and can differ slightly; derived values never replace device values
 """
 
 
+def _source_status(config: Config, last: object, newest: date | None) -> list[dict[str, Any]]:
+    """Per source: sync/ingest timestamps and newest therapy day, so agents can state data age."""
+    sync_state = read_sync_state(config.store_dir)
+    ingest_at = getattr(last, "finished", None)
+    out = []
+    for src in config.sources:
+        st = sync_state.get(src.label, {})
+        out.append(
+            {
+                "name": src.label,
+                "has_sync": src.sync is not None,
+                "last_sync_at": st.get("last_sync_at"),
+                "last_sync_ok": st.get("last_sync_ok"),
+                "last_sync_error": st.get("error"),
+                "last_ingest_at": ingest_at,
+                "newest_therapy_day": newest,
+            }
+        )
+    return out
+
+
 @dataclass
 class ServerState:
     config: Config
@@ -67,7 +89,7 @@ class ServerState:
                 yield s
         except FileNotFoundError:
             raise ToolError("No data yet: run `pap ingest` to import a source first.") from None
-        except SchemaMismatchError as exc:
+        except (SchemaMismatchError, StoreLockedError) as exc:
             raise ToolError(str(exc)) from None
 
     def device(self, store: Store, device_id: str | None) -> str:
@@ -165,7 +187,14 @@ def build_server(
                     }
                 )
             last = s.last_ingest()
-            return state.out({"devices": rows, "last_ingest": last.finished if last else None})
+            newest = max((r["last_day"] for r in rows if r["last_day"]), default=None)
+            return state.out(
+                {
+                    "devices": rows,
+                    "last_ingest": last.finished if last else None,
+                    "sources": _source_status(state.config, last, newest),
+                }
+            )
 
     @server.tool()
     @_guard
@@ -305,7 +334,6 @@ def build_server(
             from pathlib import Path
 
             from pap_analytics.ingest import ingest as run_ingest
-            from pap_analytics.store import StoreLockedError
 
             try:
                 reports = run_ingest(config, source=Path(source) if source else None)
