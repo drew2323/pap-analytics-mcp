@@ -1,0 +1,47 @@
+# Copy to compose.yaml and adapt. Same TOML config as the native runtime (config.example.toml with the
+# Docker paths: store_dir=/data/store, source path=/data/source/aircannect, secrets under /run/secrets).
+# Create secrets first:  ./secrets/pap_sync_key (chmod 600), ./secrets/pap_http_token (chmod 600).
+x-pap: &pap
+  image: pap-analytics-mcp:${PAP_VERSION:-latest}
+  build: .
+  restart: unless-stopped
+  environment:
+    PAP_CONFIG: /etc/pap-analytics/config.toml
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+services:
+  ingest:
+    <<: *pap
+    command: ["ingest", "--watch"]          # sync + ingest every sources.sync.interval_s
+    volumes:
+      - ./config.toml:/etc/pap-analytics/config.toml:ro
+      - ./secrets/known_hosts:/etc/pap-analytics/known_hosts:ro
+      - source:/data/source                 # rw: sync writes here
+      - store:/data/store                   # rw
+    secrets: [pap_sync_key]
+    healthcheck: {disable: true}
+
+  mcp:
+    <<: *pap
+    command: ["serve", "--http", "--read-only", "--host", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:8765:8765"               # loopback only; tunnel/Hermes connect here
+    volumes:
+      - ./config.toml:/etc/pap-analytics/config.toml:ro
+      - source:/data/source:ro
+      - store:/data/store:ro
+    secrets: [pap_http_token]
+    mem_limit: 512m
+    read_only: true
+    tmpfs: [/tmp]
+
+volumes:
+  source:
+  store:
+
+secrets:
+  pap_sync_key:
+    file: ./secrets/pap_sync_key
+  pap_http_token:
+    file: ./secrets/pap_http_token

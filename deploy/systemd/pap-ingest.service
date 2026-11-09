@@ -1,0 +1,10 @@
+[Unit]
+Description=PAP analytics: sync and ingest
+After=network-online.target
+
+[Service]
+Type=oneshot
+# User unit. Adjust PAP_CONFIG; `pap` is installed by `uv tool install` into ~/.local/bin.
+Environment=PAP_CONFIG=%h/.config/pap-analytics/config.toml
+ExecStart=%h/.local/bin/pap ingest
+TimeoutStartSec=30min

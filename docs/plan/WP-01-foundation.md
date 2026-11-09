@@ -11,7 +11,7 @@ Freeze the shared contracts so WP-02…WP-09 can work in parallel without guessi
    - enums/constants: `Channel names` (`CHANNELS: dict[str, str]` name → unit), `EventType` (StrEnum), `Provenance` (StrEnum: `device`, `derived`)
    - `therapy_day(ts: datetime, tz: ZoneInfo, boundary_hour: int = 12) -> date`
 2. `src/pap_analytics/config.py` – `Config` (dataclass) loaded from TOML (`--config`, else `$PAP_CONFIG`, else `~/.config/pap-analytics/config.toml`) with env overrides `PAP_*`:
-   - `sources: list[SourceConfig]` (`path`, `adapter: str = "auto"`, `timezone = "Europe/Prague"`), `store_dir` (default `~/.local/share/pap-analytics`), `day_boundary_hour = 12`, `http.host = "127.0.0.1"`, `http.port = 8765`, `http.token_file`, thresholds dict (used by WP-06/07/09, defaults defined there).
+   - `sources: list[SourceConfig]` (`name`, `path`, `adapter: str = "auto"`, `timezone = "Europe/Prague"`, optional `sync` block: `type="rsync"`, `remote`, `ssh_key_file`, `known_hosts_file`, `interval_s=900` – added by WP-10), `store_dir` (default `~/.local/share/pap-analytics`), `day_boundary_hour = 12`, `http.host = "127.0.0.1"`, `http.port = 8765`, `http.token_file`, thresholds dict (used by WP-06/07/09, defaults defined there).
    - `config.example.toml` at repo root.
 3. `src/pap_analytics/adapters/base.py` – Adapter protocol + registry:
 4. `src/pap_analytics/cli.py` – subcommand registration mechanism (each WP adds its subcommand in its own module function `register(subparsers)`), global `--config`, `--log-level`.

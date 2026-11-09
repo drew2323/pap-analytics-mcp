@@ -1,0 +1,28 @@
+# Copy to ~/.config/pap-analytics/config.toml (or pass --config / set PAP_CONFIG).
+# Environment overrides: PAP_STORE_DIR, PAP_DAY_BOUNDARY_HOUR, PAP_HTTP_HOST, PAP_HTTP_PORT, PAP_HTTP_TOKEN_FILE.
+# The same file works natively and in Docker; Docker only changes the paths (see docs/OPERATIONS.md).
+
+store_dir = "~/.local/share/pap-analytics"      # Docker: /data/store
+day_boundary_hour = 12
+
+[[sources]]
+name = "aircannect"
+path = "/mnt/aircannect/sd"      # local directory ingest reads (Docker: /data/source/aircannect)
+adapter = "auto"                 # or an adapter name, e.g. "resmed"
+timezone = "Europe/Prague"
+
+# Optional: pull the data into `path` from another host (omit if `path` is already local).
+# [sources.sync]
+# type = "rsync"                                   # only rsync in v1
+# remote = "pap-sync@hnizdo:/srv/aircannect/"
+# ssh_key_file = "/etc/pap-analytics/sync_ed25519" # Docker: /run/secrets/pap_sync_key
+# known_hosts_file = "/etc/pap-analytics/known_hosts"
+# interval_s = 900                                 # used by `pap ingest --watch`
+
+[http]
+host = "127.0.0.1"
+port = 8765
+# token_file = "/etc/pap-analytics/http_token"     # Docker: /run/secrets/pap_http_token
+
+# Analysis thresholds are defined by the analytics work packages; overrides go here.
+[thresholds]

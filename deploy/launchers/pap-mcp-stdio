@@ -1,0 +1,11 @@
+#!/bin/sh
+# Starts the MCP server on stdio for clients that spawn a command (Hermes, tunnel-client).
+# Native:  PAP_CONFIG=... pap-mcp-stdio
+# Docker:  PAP_RUNTIME=docker PAP_COMPOSE_DIR=/path/to/compose pap-mcp-stdio
+set -eu
+if [ "${PAP_RUNTIME:-native}" = "docker" ]; then
+  cd "${PAP_COMPOSE_DIR:?set PAP_COMPOSE_DIR}"
+  exec docker compose exec -T mcp pap serve --stdio --read-only
+fi
+export PAP_CONFIG="${PAP_CONFIG:-$HOME/.config/pap-analytics/config.toml}"
+exec "${PAP_BIN:-$HOME/.local/bin/pap}" serve --stdio --read-only

@@ -1,19 +1,35 @@
 [project]
 name = "pap-analytics-mcp"
-version = "0.0.0"
+version = "0.1.1"
 description = "Device-agnostic PAP (CPAP/APAP/ASV) therapy data analytics exposed to AI agents via MCP"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "David Brazda" }]
-dependencies = []
+dependencies = [
+    "duckdb>=2.0.0",
+    "httpx>=0.28.1",
+    "mcp>=1.12,<2",
+    "numpy>=2.5.4",
+    "pyarrow>=26.0.1",
+]
 
 [project.scripts]
 pap = "pap_analytics.cli:main"
 
+[project.optional-dependencies]
+plot = [
+    "matplotlib>=3.9",
+]
+
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "matplotlib>=3.9",
+    "pytest>=8",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -25,6 +41,7 @@ packages = ["src/pap_analytics"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 110
