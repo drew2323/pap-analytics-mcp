@@ -88,6 +88,21 @@ class SeriesResult:
 
 
 @dataclass
+class SignalsResult:
+    """Several channels on one time grid, no resampling. Row i is at ``start + i * step_s``
+    (no time list is returned).
+
+    The grid step is that of the finest channel. A coarser channel has a value only on the rows
+    where it has a real sample and ``None`` elsewhere (nothing is interpolated or held)."""
+
+    start: datetime
+    step_s: float
+    rows: int
+    channels: dict[str, dict[str, Any]]
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class EventsResult:
     start: datetime
     end: datetime
