@@ -11,3 +11,5 @@ from pap_analytics.adapters.base import (
 )
 
 __all__ = ["Adapter", "SessionRef", "UnknownSourceError", "detect", "get", "register", "registered"]
+
+from pap_analytics.adapters import resmed as _resmed  # noqa: E402,F401  (registers the adapter)
