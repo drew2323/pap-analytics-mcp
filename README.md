@@ -26,9 +26,9 @@ Agent:  → night_summary("last") → find_anomalies("last") → segment_stats("
 ### 🎙️ Talk it through by voice
 
 Add the server as an MCP connector to a voice assistant (**ChatGPT Voice**, or other voice apps with MCP
-support such as Dots, Muse or Grok) and talk through your night in real time over breakfast:
+support such as Dots, Muse or Grok) and simply talk about your night instead of reading charts:
 *"How did I sleep? Why was the leak higher than usual? Was it better than last week?"*
-The assistant pulls the numbers from your own device data while you talk.
+The assistant answers from your own device data.
 Setup: run the [HTTP server](#connect-your-agent) and make it reachable for the app
 (e.g. via a tunnel); see [client integration](docs/OPERATIONS.md#client-integration).
 
