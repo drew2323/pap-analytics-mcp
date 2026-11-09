@@ -3,6 +3,10 @@
 How `pap` runs in production and how to operate it. Read this before changing runtime, `Dockerfile`
 or deployment; update it in the same PR when environments, hosts, sync or deploy procedure change.
 
+**Live production setup** (hosts, users, units, install/update/rollback of the real deployment) is kept
+out of the public repo, in `~/.config/pap-analytics/SETUP.md` on `vpsagentfarma`. Read it before deploying;
+it holds no secrets in the repo and must not be copied here.
+
 ## Runtime modes
 
 One tool, one config schema, two equal runtimes. Docker only maps paths and secrets through mounts
