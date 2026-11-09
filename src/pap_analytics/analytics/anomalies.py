@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from pap_analytics.analytics.nights import AHI_TYPES, list_nights
+from pap_analytics.analytics.nights import AHI_TYPES, list_nights, night_mode, settings_in_effect
 from pap_analytics.analytics.oximetry import _detect, _thr, filter_artefacts, oximetry_summary
 from pap_analytics.analytics.timeparse import Context, day_window
 from pap_analytics.model import ChannelData, Event, Metric, Provenance
@@ -119,11 +119,11 @@ def _event_groups(events: list[Event], min_events: int, window_min: float) -> li
     return out
 
 
-def _pressure_max(store: Store, device_id: str, day: date) -> float | None:
-    cur = [s for s in store.settings(device_id) if s.valid_from <= day]
-    if not cur:
-        return None
-    v = cur[-1].values
+def _pressure_max(store: Store, device_id: str, day: date, sessions: list[Any]) -> float | None:
+    settings, _ = settings_in_effect(store, device_id, day, night_mode(sessions)[0])
+    if settings is None or settings.get("applies") is False:
+        return None  # settings of another mode say nothing about this night's maximum
+    v = settings["values"]
     if isinstance(v.get("max_pressure"), int | float):
         return float(v["max_pressure"])
     if isinstance(v.get("epap"), int | float) and isinstance(v.get("max_ps"), int | float):
@@ -216,7 +216,7 @@ def _night_findings(
         else:
             i += 1
     # pressure at device maximum
-    pmax = _pressure_max(store, device_id, day)
+    pmax = _pressure_max(store, device_id, day, sessions)
     if pmax is not None:
         for p in store.channel_window(device_id, "pressure", lo, hi):
             v = p.values.astype(np.float64)

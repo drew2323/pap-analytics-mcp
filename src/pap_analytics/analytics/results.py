@@ -46,6 +46,7 @@ class NightRow:
     pressure_p95: Metric | None
     has_oximetry: bool
     usage_min_derived: Metric | None = None  # sum of session durations, next to the device value
+    mode: str | None = None  # therapy mode recorded in the sessions (longest total duration wins)
 
 
 @dataclass
@@ -62,6 +63,7 @@ class NightSummary:
     settings: dict[str, Any] | None
     oximetry: dict[str, Any] | None
     notes: list[str] = field(default_factory=list)
+    mode: str | None = None  # therapy mode recorded in the sessions (see NightRow.mode)
 
 
 @dataclass

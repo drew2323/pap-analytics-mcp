@@ -129,7 +129,13 @@ async def test_oximetry_unavailable_day(session) -> None:
 async def test_settings_and_resources_and_prompt(session) -> None:
     _, d = await call(session, "get_settings", date="2026-11-08")
     assert d["in_effect"]["mode"] == "asv"
+    assert d["session_mode"] == "asv" and "applies" not in d["in_effect"] and d["notes"] == []
+    _, d = await call(session, "get_settings", date="2026-11-03")
+    assert d["session_mode"] == "cpap" and d["in_effect"]["applies"] is False and d["notes"]
+    _, d = await call(session, "night_summary", date="2026-11-03")
+    assert d["mode"] == "cpap"
     glossary = (await session.read_resource("pap://glossary")).contents[0].text
+    assert "Therapy mode" in glossary
     assert "Therapy day" in glossary and "not a diagnosis" in glossary and "tidal_volume" in glossary
     devices = json.loads((await session.read_resource("pap://devices")).contents[0].text)
     assert devices[0]["model"] == "AirSense11AutoSet"

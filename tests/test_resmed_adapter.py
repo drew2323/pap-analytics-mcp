@@ -189,3 +189,40 @@ def test_unknown_label_and_event_become_warnings(tmp_path: Path) -> None:
     assert [c.name for c in s.channels] == ["leak"]
     assert [e.type for e in s.events] == [EventType.OTHER] and s.events[0].raw_type == "Weird Event"
     assert any("Mystery.2s" in w for w in a.warnings) and any("Weird Event" in w for w in a.warnings)
+
+
+def test_session_mode_from_recorded_data(adapter: ResmedAdapter, resmed_air11: Path) -> None:
+    """The author switched the device (all modes enabled) to CPAP 4.0 for therapy day 2026-11-03 and
+    back to ASV on 2026-11-04 (his statement); STR only has the 2026-11-08 record (Mode 6 = ASV)."""
+    from pap_analytics.edf.reader import EdfFile
+
+    modes = {}
+    for ref in adapter.scan(resmed_air11, TZ, 12):
+        s = adapter.load_session(resmed_air11, ref, TZ, 12)
+        modes[ref.files[0].name[:15]] = (s.therapy_day, s.mode, (s.end - s.start).total_seconds() / 60)
+    # independent check of the CPAP night: delivered pressure is a flat 4.0 cmH2O in the raw PLD
+    pld = EdfFile.open(resmed_air11 / "DATALOG" / "20261103" / "20261104_005931_PLD.edf")
+    press = pld.read_signal("Press.2s")
+    assert float(press.min()) == float(press.max()) == 4.0
+    long_ = {k: v for k, v in modes.items() if v[2] >= 10}
+    cpap = {k for k, v in long_.items() if v[1] == "cpap"}
+    assert cpap == {"20261103_231722", "20261104_005931"}
+    assert all(v[0] == date(2026, 11, 3) for k, v in modes.items() if k in cpap)
+    assert all(v[1] == "asv" for k, v in long_.items() if k not in cpap)
+    assert modes["20261104_233720"][1] == "asv"  # back to ASV the next evening
+    assert all(v[1] is None for v in modes.values() if v[2] == 0)  # empty sessions: unknown
+
+
+def test_session_mode_rules() -> None:
+    from pap_analytics.adapters.resmed.mapping import session_mode
+
+    n = 300
+    nan = np.full(n, np.nan)
+    ramp = np.r_[np.linspace(4, 6, 30), np.full(n - 30, 6.0)]
+    auto = np.linspace(4, 12, n)
+    assert session_mode({"pressure": ramp, "ie_ratio": np.full(n, 40.0), "target_vent": nan}) == "cpap"
+    assert session_mode({"pressure": auto, "ie_ratio": np.full(n, 40.0), "target_vent": nan}) == "apap"
+    assert session_mode({"pressure": auto, "ie_ratio": nan, "target_vent": np.full(n, 6.0)}) == "asv"
+    assert session_mode({"pressure": ramp, "ie_ratio": nan, "target_vent": nan}) is None
+    assert session_mode({"pressure": np.full(5, 4.0)}) is None  # too short
+    assert session_mode({}) is None

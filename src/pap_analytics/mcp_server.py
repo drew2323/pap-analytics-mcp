@@ -19,6 +19,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pap_analytics import analytics
 from pap_analytics.analytics import AnalyticsError, Context, to_dict
 from pap_analytics.analytics import oximetry as ox
+from pap_analytics.analytics.nights import night_mode, settings_in_effect
 from pap_analytics.analytics.timeparse import day_window, resolve_device
 from pap_analytics.config import Config
 from pap_analytics.model import CHANNEL_ALIASES, CHANNELS, EventType
@@ -51,6 +52,14 @@ Use `get_signals` to get several channels at their original resolution on one ti
 ## Event types
 {chr(10).join(f"- `{e.value}`" for e in EventType)}
 `desaturation` is derived only (never from the device).
+
+## Therapy mode
+Each session carries the `mode` it actually ran in, read from its recorded data (derived; `cpap`,
+`apap`, `asv`, or null when too short to tell). The device can be switched between modes from night
+to night, while device settings (`get_settings`) are only known for the days the device summary
+covers. A night's `mode` is the session mode with the longest use. When it differs from the mode of
+the latest known settings, those settings are marked `applies: false` and must not be used to
+describe that night.
 
 ## Notes
 - AHI = (apneas + hypopneas) per hour of use. Leak is in L/s (0.4 L/s = 24 L/min).
@@ -347,10 +356,14 @@ def build_server(
             except AnalyticsError as exc:
                 raise ToolError(str(exc)) from None
             cur = [h for h in history if h["valid_from"] <= d]
+            mode, _ = night_mode(s.sessions(dev, d, d))
             if not cur:
-                return state.out({"device_id": dev, "date": d, "in_effect": None,
+                return state.out({"device_id": dev, "date": d, "session_mode": mode, "in_effect": None,
                                   "notes": ["no settings known for this day"]})  # fmt: skip
-            return state.out({"device_id": dev, "date": d, "in_effect": cur[-1]})
+            _, notes = settings_in_effect(s, dev, d, mode)
+            in_effect = {**cur[-1], "applies": False} if notes else cur[-1]
+            return state.out({"device_id": dev, "date": d, "session_mode": mode, "in_effect": in_effect,
+                              "notes": notes})  # fmt: skip
 
     if not read_only:
 

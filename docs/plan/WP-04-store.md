@@ -38,7 +38,7 @@ class Store:
     def settings(self, device_id: str) -> list[Settings]: ...
     def last_ingest(self) -> IngestLogEntry | None: ...
 ```
-`SessionInfo` and `IngestLogEntry` are defined in `store/types.py` (dataclasses, part of this contract).
+`SessionInfo` (incl. `mode`) and `IngestLogEntry` are defined in `store/types.py` (dataclasses, part of this contract).
 
 ## Out of scope
 Deciding what to ingest (WP-05), computing metrics (WP-06/07).

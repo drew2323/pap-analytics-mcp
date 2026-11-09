@@ -12,7 +12,7 @@ import numpy as np
 
 from pap_analytics.adapters.base import SessionRef
 from pap_analytics.adapters.resmed.detect import find
-from pap_analytics.adapters.resmed.mapping import CHANNEL_MAP, SANITIZERS, map_event
+from pap_analytics.adapters.resmed.mapping import CHANNEL_MAP, SANITIZERS, map_event, session_mode
 from pap_analytics.edf import EdfFile
 from pap_analytics.model import (
     ChannelData,
@@ -138,6 +138,7 @@ def load_session(
         max(ends) if ends else max([e.start + timedelta(seconds=e.duration_s) for e in events] + [ref.start])
     )
     events.sort(key=lambda e: e.start)
+    low_rate = {c.name: c.values.astype(np.float64) for c in channels if c.rate_hz == 0.5}
     complete = not (newest and now - datetime.fromtimestamp(newest_mtime, UTC) < growing_window)
     return Session(
         id=ref.id,
@@ -150,4 +151,5 @@ def load_session(
         source_files=tuple(str(p.relative_to(path)) for p in ref.files),
         channels=tuple(channels),
         events=tuple(events),
+        mode=session_mode(low_rate),
     )

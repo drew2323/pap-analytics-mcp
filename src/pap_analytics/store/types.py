@@ -31,6 +31,7 @@ class SessionInfo:
     fingerprint: str
     source_files: tuple[str, ...]
     channels: tuple[str, ...]
+    mode: str | None = None
 
 
 @dataclass(frozen=True)

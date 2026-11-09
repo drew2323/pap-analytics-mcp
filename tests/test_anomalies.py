@@ -207,3 +207,11 @@ def test_real_2026_11_08(store: Store) -> None:
 def test_real_2026_10_20_many_leaks(store: Store) -> None:
     res = find_anomalies(store, "resmed-23262018278", date(2026, 10, 20), ctx=CTX)
     assert 1 <= len(res) <= 20 and any(a.kind == "large_leak" for a in res)
+
+
+def test_pressure_at_max_skipped_when_settings_are_for_another_mode(make_store) -> None:
+    st_ = Settings("syn-1", DAY, "asv", {"epap": 6.0, "max_ps": 4.0}, {})
+    night = make_night(pressure_max=[(250, 262)])
+    night = Session(**{**night.__dict__, "mode": "cpap"})
+    with make_store([night], [st_]) as st:
+        assert not [a for a in find_anomalies(st, "syn-1", DAY, ctx=CTX) if a.kind == "pressure_at_max"]

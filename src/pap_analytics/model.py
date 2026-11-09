@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
 
 # Canonical channel name -> unit.
 CHANNELS: dict[str, str] = {
@@ -113,6 +113,7 @@ class Session:
     source_files: tuple[str, ...]
     channels: tuple[ChannelData, ...]
     events: tuple[Event, ...]
+    mode: str | None = None  # therapy mode this session ran in (from its recorded data), None = unknown
 
 
 @dataclass(frozen=True)

@@ -25,3 +25,6 @@ Exception to the usual "no plan in repo" convention: `docs/plan/WP-*.md` are spe
 
 ## ADR-008 – License MIT, public repository
 Compatible with airbreak-plus (MIT) code reuse; permissive for other PAP tooling.
+
+## ADR-009 – Therapy mode is read from each session's data
+The author's AirSense 11 runs modified firmware with all modes enabled and is switched between modes (e.g. CPAP 4.0 on 2026-11-03, ASV otherwise). Neither the device model nor STR settings (per day, often only a few records on the share) say what a given night ran in. The adapter therefore derives `Session.mode` from the session's recorded channels; analytics use it as the night's mode and flag settings of another mode as not applying. Alternative rejected: trust the latest STR `Mode` (wrong for every switched night).
