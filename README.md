@@ -17,7 +17,7 @@ raw device data ──► vendor adapter ──► canonical PAP model ──►
 
 ## Status
 
-Scaffold only. Implementation follows the work packages in [`docs/plan/`](docs/plan/README.md); progress is tracked in Multica (project *PAP Analytics MCP*).
+Implemented: ResMed adapter, store, ingest, analytics, oximetry and the MCP server (WP-01…08). Anomalies/plots and deployment follow. Plan: the work packages in [`docs/plan/`](docs/plan/README.md); progress is tracked in Multica (project *PAP Analytics MCP*).
 
 ## Quick start (development)
 
@@ -29,6 +29,38 @@ uv run pap --help
 ```
 
 Real test data (the author's own nights, published on purpose) lives in [`tests/data/`](tests/data/README.md).
+
+## Running the MCP server
+
+```sh
+uv run pap ingest --source /path/to/sd-card      # fill the store (read-only on the source)
+uv run pap serve --stdio                          # local agents
+PAP_HTTP_TOKEN=$(openssl rand -hex 32) uv run pap serve --http --port 8765   # needs a bearer token
+```
+
+HTTP binds `127.0.0.1`, refuses to start without a token (`PAP_HTTP_TOKEN` or `http.token_file`;
+`--insecure-no-auth` only on loopback), serves MCP at `/mcp` and an unauthenticated `GET /healthz`.
+`--read-only` hides the admin `ingest` tool.
+
+Claude Desktop / Claude Code (stdio):
+
+```json
+{"mcpServers": {"pap": {"command": "uv", "args": ["--directory", "/path/to/pap-analytics-mcp", "run", "pap", "serve", "--stdio"]}}}
+```
+
+Claude Code over HTTP: `claude mcp add --transport http pap http://host:8765/mcp --header "Authorization: Bearer $TOKEN"`
+
+Hermes (`mcp_servers`):
+
+```yaml
+mcp_servers:
+  pap:                       # stdio
+    command: uv
+    args: ["--directory", "/path/to/pap-analytics-mcp", "run", "pap", "serve", "--stdio"]
+  pap_http:                  # or HTTP
+    url: http://host:8765/mcp
+    headers: {Authorization: "Bearer ${PAP_HTTP_TOKEN}"}
+```
 
 ## Documentation
 
