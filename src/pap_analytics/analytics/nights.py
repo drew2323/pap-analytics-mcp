@@ -48,6 +48,15 @@ def night_mode(sessions: list[SessionInfo]) -> tuple[str | None, dict[str, float
     return max(minutes, key=lambda m: minutes[m]), dict(sorted(minutes.items()))
 
 
+# The PLD-derived session mode cannot tell ASV from ASVAuto ("asv" means "an ASV-family mode":
+# TgtVent recorded), so it is compatible with STR settings of either "asv" or "asv_auto".
+_ASV_FAMILY = {"asv", "asv_auto"}
+
+def modes_compatible(session_mode: str | None, settings_mode: str | None) -> bool:
+    if session_mode is None or settings_mode is None or session_mode == settings_mode:
+        return True
+    return session_mode in _ASV_FAMILY and settings_mode in _ASV_FAMILY
+
 def settings_in_effect(
     store: Store, device_id: str, day: date, mode: str | None
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -59,7 +68,7 @@ def settings_in_effect(
         return None, ["no settings known for this day"]
     s = history[-1]
     out: dict[str, Any] = {"valid_from": s.valid_from, "mode": s.mode, "values": s.values}
-    if mode is None or s.mode is None or s.mode == mode:
+    if modes_compatible(mode, s.mode):
         return out, []
     out["applies"] = False
     return out, [
