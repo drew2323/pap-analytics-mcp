@@ -8,7 +8,7 @@ from pap_analytics.mcp_server import build_server
 
 TOOLS = {
     "list_devices", "list_nights", "night_summary", "get_events", "segment_stats", "get_signal",
-    "oximetry_summary", "compare_periods", "get_settings", "find_anomalies", "plot_segment",
+    "get_signals", "oximetry_summary", "compare_periods", "get_settings", "find_anomalies", "plot_segment",
 }  # fmt: skip
 
 
@@ -184,3 +184,26 @@ async def test_list_devices_reports_sync_and_ingest_status(ingested_store: Path,
     assert a["last_sync_at"].startswith("2026-11-09T06:00") and a["last_sync_error"] == "boom"
     assert a["last_ingest_at"] and a["newest_therapy_day"] == "2026-11-08"
     assert b["has_sync"] is False and b["last_sync_at"] is None and b["last_sync_ok"] is None
+
+
+@with_session
+async def test_get_signals_tool(session) -> None:
+    res, d = await call(session, "get_signals", date="2026-11-08", start="00:10", end="00:11",
+                        channels=["flow", "pressure_hr", "mask_pressure", "pressure", "spo2"])  # fmt: skip
+    assert not res.isError and d["step_s"] == 0.04 and d["rows"] == 1500
+    res, d = await call(session, "get_signals", date="2026-11-08", start="00:10", end="00:10:30",
+                        channels=["flow", "pressure_hr", "mask_pressure", "pressure", "spo2"])  # fmt: skip
+    assert (
+        not res.isError
+        and d["step_s"] == 0.04
+        and set(d["channels"]) <= {"flow", "pressure_hr", "mask_pressure", "pressure", "spo2"}
+    )
+    assert len(res.content[0].text) < 60_000
+    res, _ = await call(
+        session, "get_signals", date="2026-11-08", start="00:10", end="00:11", channels=["nope"]
+    )
+    assert res.isError and "channels available" in res.content[0].text
+    res, _ = await call(
+        session, "get_signals", date="2026-11-08", start="00:10", end="00:30", channels=["flow"]
+    )
+    assert res.isError and "limited to 2000 rows" in res.content[0].text

@@ -113,7 +113,7 @@ server instance (own port, own `PAP_HTTP_TOKEN_FILE`) per HTTP client. Stdio cli
 
 ## Production setup log
 
-Live setup on `vpsagentfarma` (native mode, release `v0.1.1`):
+Live setup on `vpsagentfarma` (native mode, release `v0.1.2`):
 
 - hnizdo: user `pap-sync` (system, locked password, group `aircannect`), `rsync` installed (Debian
   `rsync` package provides `/usr/bin/rrsync`), `authorized_keys`:
@@ -121,7 +121,7 @@ Live setup on `vpsagentfarma` (native mode, release `v0.1.1`):
   The private key `~/.config/pap-analytics/sync_ed25519` exists only on vpsagentfarma; pinned
   host key in `known_hosts` (ED25519 fingerprint checked against `ssh-keygen -lf` on hnizdo).
 - Checked: pulling works; writing (`rsync` upload) and arbitrary commands are refused by rrsync.
-- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.1" --with matplotlib`;
+- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.2" --with matplotlib`;
   config `~/.config/pap-analytics/config.toml` (store `~/.local/share/pap-analytics/store`, source copy
   `~/.local/share/pap-analytics/source/aircannect`); units `pap-ingest.{service,timer}` in
   `~/.config/systemd/user/`, user linger on.

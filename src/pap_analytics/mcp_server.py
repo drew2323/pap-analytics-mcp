@@ -21,7 +21,7 @@ from pap_analytics.analytics import AnalyticsError, Context, to_dict
 from pap_analytics.analytics import oximetry as ox
 from pap_analytics.analytics.timeparse import day_window, resolve_device
 from pap_analytics.config import Config
-from pap_analytics.model import CHANNELS, EventType
+from pap_analytics.model import CHANNEL_ALIASES, CHANNELS, EventType
 from pap_analytics.store import SchemaMismatchError, Store, StoreLockedError
 from pap_analytics.sync import read_state as read_sync_state
 
@@ -43,6 +43,10 @@ side by side and can differ slightly; derived values never replace device values
 ## Channels (canonical units)
 {chr(10).join(f"- `{k}`: {v or 'unitless'}" for k, v in CHANNELS.items())}
 `flow` and `pressure_hr` are waveform-rate channels (25 Hz): windows up to 30 min only.
+`pressure_hr` is the **25 Hz mask pressure** (alias `mask_pressure_hr`); `mask_pressure` is the same
+quantity at only 0.5 Hz (one sample per 2 s) and has no finer detail. For a detailed look at mask
+pressure together with flow use `pressure_hr`.
+Use `get_signals` to get several channels at their original resolution on one time grid.
 
 ## Event types
 {chr(10).join(f"- `{e.value}`" for e in EventType)}
@@ -268,10 +272,32 @@ def build_server(
             dev = state.device(s, device_id)
             d = state.day(s, dev, date)
             a, b = state.window(d, start, end)
-            if channel not in CHANNELS:
+            if channel not in CHANNELS and channel not in CHANNEL_ALIASES:
                 have = sorted({c for x in s.sessions(dev, d, d) for c in x.channels})
                 raise ToolError(f"unknown channel {channel!r}; channels available on {d}: {have}")
             return state.out(analytics.get_signal(s, dev, a, b, channel, max_points))
+
+    @server.tool()
+    @_guard
+    def get_signals(
+        date: str, start: str, end: str, channels: list[str], device_id: str | None = None
+    ) -> dict[str, Any]:
+        """Raw samples of several channels (e.g. flow, pressure_hr, mask_pressure, pressure, spo2) on
+        ONE time grid, no aggregation and no interpolation. The grid step is that of the finest
+        channel (25 Hz -> 0.04 s); a slower channel has its real sample on matching rows and null
+        elsewhere. Row i is at `start + i * step_s` (no time list). Limit: 2000 rows (80 s with a
+        25 Hz channel; slow channels alone can span much longer). For longer windows use
+        `get_signal` (aggregated)."""
+        with state.store() as s:
+            dev = state.device(s, device_id)
+            d = state.day(s, dev, date)
+            a, b = state.window(d, start, end)
+            known = set(CHANNELS) | set(CHANNEL_ALIASES)
+            bad = [c for c in channels if c not in known]
+            if bad:
+                have = sorted({c for x in s.sessions(dev, d, d) for c in x.channels})
+                raise ToolError(f"unknown channels {bad}; channels available on {d}: {have}")
+            return state.out(analytics.get_signals(s, dev, a, b, channels))
 
     @server.tool()
     @_guard

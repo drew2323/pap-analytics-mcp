@@ -36,6 +36,11 @@ CHANNELS: dict[str, str] = {
 }
 
 
+# Accepted input names -> canonical channel. `pressure_hr` is the 25 Hz mask pressure (ResMed
+# `Press.40ms`); `mask_pressure` is the 0.5 Hz one (`MaskPress.2s`).
+CHANNEL_ALIASES: dict[str, str] = {"mask_pressure_hr": "pressure_hr"}
+
+
 class EventType(StrEnum):
     OBSTRUCTIVE_APNEA = "obstructive_apnea"
     CENTRAL_APNEA = "central_apnea"

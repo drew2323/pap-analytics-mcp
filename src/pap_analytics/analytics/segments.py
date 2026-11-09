@@ -5,14 +5,15 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 
 from pap_analytics.analytics.events import event_dict
-from pap_analytics.analytics.results import AnalyticsError, SegmentStats, SeriesResult
+from pap_analytics.analytics.results import AnalyticsError, SegmentStats, SeriesResult, SignalsResult
 from pap_analytics.analytics.stats import seconds_above, stat_block
 from pap_analytics.analytics.timeparse import Context
-from pap_analytics.model import CHANNELS, ChannelData, Metric, Provenance
+from pap_analytics.model import CHANNEL_ALIASES, CHANNELS, ChannelData, Metric, Provenance
 from pap_analytics.store import Store
 
 STAT_CHANNELS = (
@@ -22,6 +23,8 @@ STAT_CHANNELS = (
 HIGH_RATE = {"flow", "pressure_hr"}
 HIGH_RATE_MAX_MIN = 30
 MAX_POINTS = 2000
+MAX_SIGNAL_ROWS = 2000  # get_signals grid rows (= 80 s at 25 Hz)
+MAX_SIGNAL_CHANNELS = 8
 
 
 def segment_stats(
@@ -98,9 +101,15 @@ def downsample(parts: ChannelData | Sequence[ChannelData], max_points: int = 300
     )  # fmt: skip
 
 
+def resolve_channel(name: str) -> str:
+    """Canonical channel for an accepted name (resolves aliases)."""
+    return CHANNEL_ALIASES.get(name, name)
+
+
 def get_signal(
     store: Store, device_id: str, start: datetime, end: datetime, channel: str, max_points: int = 300
 ) -> SeriesResult:
+    channel = resolve_channel(channel)
     if channel not in CHANNELS:
         raise AnalyticsError(f"unknown channel {channel!r}; known: {sorted(CHANNELS)}")
     if end <= start:
@@ -120,3 +129,54 @@ def get_signal(
     res = downsample(parts, max_points)
     res.notes = notes
     return res
+
+
+def get_signals(
+    store: Store, device_id: str, start: datetime, end: datetime, channels: Sequence[str]
+) -> SignalsResult:
+    """Raw samples of several channels on one grid given by the finest channel (no aggregation)."""
+    if end <= start:
+        raise AnalyticsError("end must be after start")
+    names = list(dict.fromkeys(resolve_channel(c) for c in channels))
+    if not names:
+        raise AnalyticsError("give at least one channel")
+    if len(names) > MAX_SIGNAL_CHANNELS:
+        raise AnalyticsError(f"at most {MAX_SIGNAL_CHANNELS} channels per call")
+    bad = [c for c in names if c not in CHANNELS]
+    if bad:
+        raise AnalyticsError(f"unknown channels {bad}; known: {sorted(CHANNELS)}")
+    notes: list[str] = []
+    data: dict[str, list[ChannelData]] = {}
+    for name in names:
+        parts = store.channel_window(device_id, name, start, end)
+        if parts:
+            data[name] = list(parts)
+        else:
+            notes.append(f"no {name} data in this window")
+    if not data:
+        raise AnalyticsError("no data for any requested channel between the given times")
+    fine = max(data, key=lambda n: data[n][0].rate_hz)  # parts are already sliced to the window
+    step = 1.0 / data[fine][0].rate_hz
+    t0 = min(p.start for p in data[fine])
+    rows = max(round(((p.start - t0).total_seconds() / step) + len(p.values)) for p in data[fine])
+    if rows > MAX_SIGNAL_ROWS:
+        raise AnalyticsError(
+            f"{fine} has {data[fine][0].rate_hz:g} Hz: raw samples are limited to {MAX_SIGNAL_ROWS} rows "
+            f"= {MAX_SIGNAL_ROWS * step:g} s (asked for {rows * step:.0f} s). "
+            "Use a shorter window, or only slow channels."
+        )
+    out: dict[str, dict[str, Any]] = {}
+    for name, parts in data.items():
+        vals: list[float | None] = [None] * rows
+        off_grid = 0
+        for p in parts:
+            pos = ((p.start - t0).total_seconds() + np.arange(len(p.values)) / p.rate_hz) / step
+            idx = np.rint(pos).astype(np.int64)
+            off_grid += int(np.sum(np.abs(pos - idx) > 1e-3))
+            for i, v in zip(idx.tolist(), p.values.tolist(), strict=True):
+                if 0 <= i < rows and math.isfinite(v):
+                    vals[i] = v
+        if off_grid:
+            notes.append(f"{name}: {off_grid} samples were off the grid and snapped to the nearest row")
+        out[name] = {"unit": CHANNELS[name], "rate_hz": data[name][0].rate_hz, "values": vals}
+    return SignalsResult(t0, step, rows, out, notes)

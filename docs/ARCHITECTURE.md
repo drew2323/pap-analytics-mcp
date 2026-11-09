@@ -78,7 +78,7 @@ Every metric returned by analytics/MCP carries `provenance`: `device` = value re
 
 Tools return compact JSON with explicit units and provenance; any time series is downsampled to ≤ `max_points` (default 300, hard cap 2000) using bucket min/mean/max. No tool returns raw high-rate data.
 
-`list_devices`, `list_nights`, `night_summary`, `get_events`, `segment_stats`, `get_signal`, `find_anomalies`, `compare_periods`, `get_settings`, `oximetry_summary`, optional `plot_segment`, admin `ingest` (disabled with `--read-only`). Resources: `pap://glossary`, `pap://devices`. Prompt: `nightly_review`.
+`list_devices`, `list_nights`, `night_summary`, `get_events`, `segment_stats`, `get_signal`, `get_signals`, `find_anomalies`, `compare_periods`, `get_settings`, `oximetry_summary`, optional `plot_segment`, admin `ingest` (disabled with `--read-only`). Resources: `pap://glossary`, `pap://devices`. Prompt: `nightly_review`.
 
 Exact signatures: [plan/WP-08-mcp-server.md](plan/WP-08-mcp-server.md).
 

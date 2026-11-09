@@ -245,3 +245,56 @@ def test_cli_query(ingested_store, tmp_path, capsys) -> None:
     assert cli.main(["--config", str(conf), "night", "nonsense"]) == 2
     conf.write_text(f'store_dir = "{tmp_path / "none"}"\n')
     assert cli.main(["--config", str(conf), "nights"]) == 2
+
+
+def _night_start(store: Store) -> datetime:
+    return max(store.sessions(DEV, date(2026, 11, 8), date(2026, 11, 8)), key=lambda x: x.end - x.start).start
+
+
+def test_get_signals_one_grid_no_interpolation(store: Store) -> None:
+    from pap_analytics.analytics import get_signals
+
+    a = _night_start(store) + timedelta(minutes=30)
+    res = get_signals(
+        store, DEV, a, a + timedelta(seconds=40), ["flow", "mask_pressure", "pressure", "pressure_hr"]
+    )
+    assert res.step_s == pytest.approx(0.04) and res.rows == 1000
+    flow = store.channel_window(DEV, "flow", a, a + timedelta(seconds=40))[0]
+    mp = store.channel_window(DEV, "mask_pressure", a, a + timedelta(seconds=40))[0]
+    # fine channel: every raw sample, unchanged
+    assert res.channels["flow"]["values"] == pytest.approx(flow.values[:1000].tolist())
+    assert res.channels["flow"]["rate_hz"] == 25.0 and res.channels["mask_pressure"]["rate_hz"] == 0.5
+    # slow channel: real samples on every 50th row (2 s / 40 ms), null elsewhere
+    slow = res.channels["mask_pressure"]["values"]
+    k = int((mp.start - flow.start).total_seconds() / 0.04)
+    for i, v in enumerate(slow):
+        if i >= k and (i - k) % 50 == 0 and (i - k) // 50 < len(mp.values):
+            assert v == pytest.approx(float(mp.values[(i - k) // 50]))
+        else:
+            assert v is None
+    assert sum(v is not None for v in slow) == len(mp.values[: (1000 - k + 49) // 50])
+
+
+def test_get_signals_alias_slow_only_and_limits(store: Store) -> None:
+    from pap_analytics.analytics import get_signals
+
+    a = _night_start(store) + timedelta(minutes=30)
+    # alias resolves to the canonical channel
+    r = get_signals(store, DEV, a, a + timedelta(seconds=10), ["mask_pressure_hr", "pressure_hr"])
+    assert list(r.channels) == ["pressure_hr"]
+    # only slow channels: the grid is 2 s and a long window is allowed, nothing is aggregated
+    slow = get_signals(store, DEV, a, a + timedelta(hours=1), ["mask_pressure", "leak"])
+    assert slow.step_s == pytest.approx(2.0) and slow.rows == 1800
+    assert all(v is not None for v in slow.channels["leak"]["values"][:1800])
+    with pytest.raises(AnalyticsError, match="limited to 2000 rows"):
+        get_signals(store, DEV, a, a + timedelta(minutes=5), ["flow", "pressure"])
+    with pytest.raises(AnalyticsError, match="unknown"):
+        get_signals(store, DEV, a, a + timedelta(seconds=5), ["zzz"])
+    with pytest.raises(AnalyticsError, match="at least one"):
+        get_signals(store, DEV, a, a + timedelta(seconds=5), [])
+
+
+def test_get_signal_accepts_alias(store: Store) -> None:
+    a = _night_start(store) + timedelta(minutes=30)
+    r = get_signal(store, DEV, a, a + timedelta(minutes=1), "mask_pressure_hr", max_points=100000)
+    assert r.channel == "pressure_hr" and r.bucket_s == pytest.approx(0.04)
