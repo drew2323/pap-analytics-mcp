@@ -102,22 +102,30 @@ claude mcp add --transport http pap http://127.0.0.1:8765/mcp --header "Authoriz
 
 `--read-only` hides the admin `ingest` tool. Without it, the agent can trigger an import itself.
 
-## What the agent gets
+## MCP tools
 
-| Tool | Answers |
+Every tool returns compact JSON with units and provenance (`device` or `derived`). Dates are `YYYY-MM-DD`,
+`last` or `yesterday`; times are local `HH:MM` within the night (a night runs from noon to noon).
+
+| Tool | What it does |
 |---|---|
-| `list_devices`, `list_nights` | Which devices, which nights, usage and AHI at a glance |
-| `night_summary` | One night: sessions, mask-off gaps, events, device vs. derived metrics, settings |
-| `get_events`, `segment_stats` | Events and statistics within a time window (`02:10`–`02:40`) |
-| `get_signal`, `get_signals` | Downsampled channels (flow, pressure, leak, SpO2, …), never more than 2000 points |
-| `find_anomalies` | Parts of a night worth a look, ranked |
-| `oximetry_summary` | SpO2/pulse metrics with artefact filtering |
-| `compare_periods` | Period A vs. B with absolute and relative change |
-| `get_settings` | Device settings in effect on a date, or their history |
-| `plot_segment` | PNG plot of a segment (needs `matplotlib`) |
+| `list_devices` | Known devices, their data range and when data was last imported |
+| `list_nights` | One row per night: usage, AHI (device and derived), events, leak and pressure p95, oximetry flag |
+| `night_summary` | Full picture of one night: sessions, mask-off gaps, events per hour, metrics, settings in effect, SpO2 |
+| `find_anomalies` | Ranked parts of a night worth a look (event clusters, large leak, desaturations, pressure at max, outliers vs. the last 14 nights), each with a reason and a suggested next call |
+| `get_events` | Events in a time window, optionally filtered by type (obstructive, central, hypopnea, RERA, …) |
+| `segment_stats` | Min/median/mean/p95/max of every channel plus the events inside a window, e.g. `02:00`–`02:30` |
+| `get_signal` | One channel (flow, pressure, leak, resp. rate, tidal volume, SpO2, …) downsampled to ≤ 2000 points |
+| `get_signals` | Several channels on one time grid at full resolution, for a close look at a short window (breath by breath) |
+| `oximetry_summary` | SpO2 and pulse: mean, minimum, T90, ODI 3 %/4 %, list of desaturations, artefacts filtered out |
+| `compare_periods` | Average nightly metrics of two periods with the absolute and relative change |
+| `get_settings` | Device settings in effect on a date, or the full history of changes |
+| `plot_segment` | PNG chart of a window with events shaded (needs `matplotlib`) |
+| `ingest` | Admin: import new data now (hidden with `--read-only`) |
 
-Plus the resources `pap://glossary` and `pap://devices`, and the prompt `nightly_review`.
-The same queries are available on the command line: `pap nights`, `pap night last`, `pap segment last 02:10 02:40`.
+Also available: the resources `pap://glossary` (channels, units, event types) and `pap://devices`, and the prompt
+`nightly_review` (a guided review of one night).
+The same queries work on the command line: `pap nights`, `pap night last`, `pap segment last 02:10 02:40`.
 
 ## Configuration
 
