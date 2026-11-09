@@ -156,6 +156,17 @@ docker compose up -d                   # ingest (watch) + MCP over HTTP on 127.0
 
 Details, secrets and the stdio fallback: [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
+## Under the hood
+
+Not just a thin wrapper around files – the server has its own analytics layer:
+
+- **Ingest:** own EDF/EDF+ reader and vendor adapters normalise the data into one vendor-neutral model; imports are incremental.
+- **Store:** DuckDB catalog plus per-channel Parquet signals, rebuildable from the source at any time.
+- **Analytics:** window statistics, event clustering, anomaly ranking, SpO2 (T90, ODI, desaturations), period comparison, settings history.
+- **Interface:** 13 MCP tools, resources and a prompt over stdio or HTTP (bearer token) – for desktop agents, coding agents and voice assistants.
+
+Python 3.12, NumPy, PyArrow, the official MCP SDK; matplotlib optional. Details in [ARCHITECTURE](docs/ARCHITECTURE.md).
+
 ## Development
 
 ```sh
