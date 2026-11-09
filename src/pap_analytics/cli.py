@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="logging level (default: WARNING)",
     )
     import pap_analytics.cli_ingest  # noqa: F401  (registers subcommands)
+    import pap_analytics.cli_query  # noqa: F401
 
     subparsers = parser.add_subparsers(dest="command")
     for registrar in _REGISTRARS:
