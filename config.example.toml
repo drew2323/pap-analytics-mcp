@@ -1,0 +1,18 @@
+# Copy to ~/.config/pap-analytics/config.toml (or pass --config / set PAP_CONFIG).
+# Environment overrides: PAP_STORE_DIR, PAP_DAY_BOUNDARY_HOUR, PAP_HTTP_HOST, PAP_HTTP_PORT, PAP_HTTP_TOKEN_FILE.
+
+store_dir = "~/.local/share/pap-analytics"
+day_boundary_hour = 12
+
+[[sources]]
+path = "/mnt/aircannect/sd"      # read-only source directory
+adapter = "auto"                 # or an adapter name, e.g. "resmed"
+timezone = "Europe/Prague"
+
+[http]
+host = "127.0.0.1"
+port = 8765
+# token_file = "~/.config/pap-analytics/token"
+
+# Analysis thresholds are defined by the analytics work packages; overrides go here.
+[thresholds]
