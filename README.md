@@ -23,8 +23,14 @@ Agent:  → night_summary("last") → find_anomalies("last") → segment_stats("
         between 05:16 and 05:21 (lowest SpO2 89 %); the rest of the night stayed around 97 %.
 ```
 
-> [!WARNING]
-> **Not a medical device.** The output is analytical, not a diagnosis. Talk to your clinician about therapy changes.
+### 🎙️ Talk it through by voice
+
+Add the server as an MCP connector to a voice assistant (**ChatGPT Voice**, or other voice apps with MCP
+support such as Dots, Muse or Grok) and talk through your night in real time over breakfast:
+*"How did I sleep? Why was the leak higher than usual? Was it better than last week?"*
+The assistant pulls the numbers from your own device data while you talk.
+Setup: run the [HTTP server](#connect-your-agent) and make it reachable for the app
+(e.g. via a tunnel); see [client integration](docs/OPERATIONS.md#client-integration).
 
 ## Features
 
