@@ -13,28 +13,26 @@
 </div>
 
 An [MCP](https://modelcontextprotocol.io) server that turns PAP therapy data (CPAP / APAP / BiPAP / ASV) into
-small, aggregate tools an AI agent can call. Your agent asks *"How was last night?"* and gets usage, AHI,
-events, leak, pressure and SpO2 – not megabytes of raw waveforms.
+small, aggregate tools an AI agent can call. The agent gets usage, AHI, events, leak, pressure and SpO2 –
+not megabytes of raw waveforms – so you can simply ask:
 
-```text
-You:    How was last night? Anything unusual?
-Agent:  → night_summary("last") → find_anomalies("last") → segment_stats("last", "05:15", "05:22")
-        6 h 20 min of use, AHI 1.0 (device), leak low. One cluster of 6 small desaturations
-        between 05:16 and 05:21 (lowest SpO2 89 %); the rest of the night stayed around 97 %.
-```
+- *"How was last night?"*
+- *"Which parts of the night had the most events, and what kind?"*
+- *"Analyse the hypopnea at 3:12 – what happened right before it?"*
+- *"Did my SpO2 drop after the events?"*
+- *"Compare this week with last week."*
 
 ### 🎙️ Talk it through by voice
 
 Add the server as an MCP connector to a voice assistant (**ChatGPT Voice**, or other voice apps with MCP
-support such as Dots, Muse or Grok) and simply talk about your night instead of reading charts:
-*"How did I sleep? Why was the leak higher than usual? Was it better than last week?"*
+support such as Dots, Muse or Grok) and ask the same questions out loud instead of reading charts.
 The assistant answers from your own device data.
 Setup: run the [HTTP server](#connect-your-agent) and make it reachable for the app
 (e.g. via a tunnel); see [client integration](docs/OPERATIONS.md#client-integration).
 
 ## Features
 
-- 🌙 **Night summaries, time windows and period comparisons:** *"Analyse 02:10–02:40"*, *"This week vs. last week"*.
+- 🌙 **Night summaries, time windows and period comparisons:** from a whole night down to single breaths, or one week against another.
 - 🔎 **Anomaly finder** that points at event clusters, large leak, desaturations and pressure at maximum.
 - 🫁 **Oximetry** (SpO2, pulse, T90, ODI) when an oximeter is connected.
 - 🏷️ **Clear provenance:** every number says whether it came from the device or was computed here.
