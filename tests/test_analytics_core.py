@@ -57,7 +57,7 @@ def test_night_summary_2026_11_08(store: Store, resmed_air11) -> None:
     assert n.settings is not None and n.settings["mode"] == "asv"
     assert {"pressure", "leak", "resp_rate"} <= set(n.channels)
     assert n.channels["leak"].p5 is not None and n.derived_metrics["large_leak_min"].value == 0
-    assert n.oximetry is None  # WP-07 not present yet
+    assert n.oximetry is not None and n.oximetry["metrics"]["spo2_min"].value == 89
     assert sum(r["events"] for r in n.events_per_hour) == 7
 
 
