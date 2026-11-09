@@ -85,6 +85,10 @@ Native:
    (user lingering must be on to survive logout/reboot: `loginctl enable-linger $USER`).
 4. Update = repeat 1; rollback = `uv tool install --force …@vPREV`. A `SCHEMA_VERSION` change makes
    the store refuse to open: run `pap ingest --rebuild` (the store is disposable).
+   Long-running stdio servers keep the old code in memory: restart `pap-chatgpt-tunnel.service`
+   and end the `pap serve --stdio` children of Hermes (they are respawned on the next tool call).
+   With a schema change: `systemctl --user stop pap-ingest.timer` → install → `pap ingest --rebuild`
+   → start the timer → restart the servers.
 
 Docker: `docker build -t pap-analytics-mcp:vX.Y.Z .`, set `PAP_VERSION`, `docker compose up -d`.
 Rollback = previous image tag.
@@ -113,7 +117,7 @@ server instance (own port, own `PAP_HTTP_TOKEN_FILE`) per HTTP client. Stdio cli
 
 ## Production setup log
 
-Live setup on `vpsagentfarma` (native mode, release `v0.1.2`):
+Live setup on `vpsagentfarma` (native mode, release `v0.1.3`):
 
 - hnizdo: user `pap-sync` (system, locked password, group `aircannect`), `rsync` installed (Debian
   `rsync` package provides `/usr/bin/rrsync`), `authorized_keys`:
@@ -121,7 +125,7 @@ Live setup on `vpsagentfarma` (native mode, release `v0.1.2`):
   The private key `~/.config/pap-analytics/sync_ed25519` exists only on vpsagentfarma; pinned
   host key in `known_hosts` (ED25519 fingerprint checked against `ssh-keygen -lf` on hnizdo).
 - Checked: pulling works; writing (`rsync` upload) and arbitrary commands are refused by rrsync.
-- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.2" --with matplotlib`;
+- vpsagentfarma: `uv tool install "git+https://github.com/drew2323/pap-analytics-mcp@v0.1.3" --with matplotlib`;
   config `~/.config/pap-analytics/config.toml` (store `~/.local/share/pap-analytics/store`, source copy
   `~/.local/share/pap-analytics/source/aircannect`); units `pap-ingest.{service,timer}` in
   `~/.config/systemd/user/`, user linger on.
