@@ -338,6 +338,8 @@ def build_server(
             f"4. End with the disclaimer: {DISCLAIMER}"
         )
 
+    import pap_analytics.mcp_extras  # noqa: F401  (registers find_anomalies / plot_segment)
+
     for register in _extensions:
         register(server, state)
     return server

@@ -18,8 +18,14 @@ dependencies = [
 [project.scripts]
 pap = "pap_analytics.cli:main"
 
+[project.optional-dependencies]
+plot = [
+    "matplotlib>=3.9",
+]
+
 [dependency-groups]
 dev = [
+    "matplotlib>=3.9",
     "pytest>=8",
     "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.6",

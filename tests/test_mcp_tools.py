@@ -8,7 +8,7 @@ from pap_analytics.mcp_server import build_server
 
 TOOLS = {
     "list_devices", "list_nights", "night_summary", "get_events", "segment_stats", "get_signal",
-    "oximetry_summary", "compare_periods", "get_settings",
+    "oximetry_summary", "compare_periods", "get_settings", "find_anomalies", "plot_segment",
 }  # fmt: skip
 
 
@@ -63,6 +63,7 @@ async def test_every_tool_callable_and_matches_schema(session) -> None:
             "b_from": "2026-10-20", "b_to": "2026-10-25",
         },
         "get_settings": {},
+        "find_anomalies": {"date": "2026-11-08"},
     }  # fmt: skip
     tools = {t.name: t for t in (await session.list_tools()).tools}
     for name, args in calls.items():

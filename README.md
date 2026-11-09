@@ -17,7 +17,7 @@ raw device data ──► vendor adapter ──► canonical PAP model ──►
 
 ## Status
 
-Implemented: ResMed adapter, store, ingest, analytics, oximetry and the MCP server (WP-01…08). Anomalies/plots and deployment follow. Plan: the work packages in [`docs/plan/`](docs/plan/README.md); progress is tracked in Multica (project *PAP Analytics MCP*).
+Implemented: ResMed adapter, store, ingest, analytics, oximetry and the MCP server (WP-01…08). Anomaly detection and optional plots (WP-09) are in; deployment follows. Plan: the work packages in [`docs/plan/`](docs/plan/README.md); progress is tracked in Multica (project *PAP Analytics MCP*).
 
 ## Quick start (development)
 
@@ -40,7 +40,7 @@ PAP_HTTP_TOKEN=$(openssl rand -hex 32) uv run pap serve --http --port 8765   # n
 
 HTTP binds `127.0.0.1`, refuses to start without a token (`PAP_HTTP_TOKEN` or `http.token_file`;
 `--insecure-no-auth` only on loopback), serves MCP at `/mcp` and an unauthenticated `GET /healthz`.
-`--read-only` hides the admin `ingest` tool.
+`--read-only` hides the admin `ingest` tool. `plot_segment` needs the extra: `uv sync --extra plot`.
 
 Claude Desktop / Claude Code (stdio):
 
