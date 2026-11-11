@@ -27,7 +27,8 @@ port = 8765
 # Analysis thresholds. Everything below is optional: uncomment a key to override its default.
 # Only the keys listed here are supported; unknown keys, non-numeric values and out-of-range
 # values are rejected at load time. `pap config show` prints all effective values.
-# Overrides take effect for anomaly detection (`find_anomalies`, night summaries) and oximetry.
+# Overrides take effect for anomaly detection (`find_anomalies`, night summaries), oximetry and
+# disturbance metrics.
 [thresholds]
 
 # --- Leak -------------------------------------------------------------------------------
@@ -59,6 +60,17 @@ port = 8765
 # baseline_window_s = 120.0     # s, >= 1. Desaturation baseline = max valid SpO2 in this preceding window.
 # desat_min_duration_s = 10.0   # s, >= 0. A desaturation must last this long to be counted.
 # association_window_s = 30.0   # s, >= 0. Max distance for associating a desaturation with a respiratory event.
+
+# --- Disturbances beyond AHI (`disturbance_summary`, `disturbance_trend`) ---------------
+# pulse_rise_bpm = 8.0          # /min, >= 1. Pulse rise above the local baseline that counts as a pulse rise
+#                               # (possible autonomic arousal); also the PRR level counted as "responsive".
+# pulse_rise_min_s = 3.0        # s, >= 0. A pulse rise must stay above baseline + half the rise this long.
+# pulse_baseline_s = 60.0       # s, >= 10. Pulse baseline = median of this preceding window.
+# link_window_s = 15.0          # s, >= 0. A pulse rise starting this long after a respiratory event, desaturation,
+#                               # flow-limitation episode or device arousal mark is linked to it.
+# fl_threshold = 0.2            # 0.01..1. Device flow-limitation value that counts as flow limited.
+# fl_min_s = 10.0               # s, >= 0. Flow limitation must last this long to form an episode.
+# rera_recovery_ratio = 1.5     # >= 1. Recovery breath after an episode: max tidal volume / median during it.
 
 # Deliberately NOT configurable (hardcoded): desaturation depths of 3 % / 4 % (ODI3 / ODI4),
 # the 60 s merge of nearby low-SpO2 spans, and the minimum absolute deviation per outlier metric.

@@ -18,6 +18,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from pap_analytics import analytics
 from pap_analytics.analytics import AnalyticsError, Context, to_dict
+from pap_analytics.analytics import disturbances as dist
 from pap_analytics.analytics import oximetry as ox
 from pap_analytics.analytics.nights import night_mode, settings_in_effect
 from pap_analytics.analytics.timeparse import day_window, resolve_device
@@ -60,6 +61,20 @@ to night, while device settings (`get_settings`) are only known for the days the
 covers. A night's `mode` is the session mode with the longest use. When it differs from the mode of
 the latest known settings, those settings are marked `applies: false` and must not be used to
 describe that night.
+
+## Disturbances beyond AHI (`disturbance_summary`, `disturbance_trend`)
+All derived, in two groups that must not be mixed up:
+- `measured` – read directly off a signal: `prr_*` (pulse rate response = peak pulse within 30 s
+  after a device apnea/hypopnea minus the 30 s pre-event median), `pulse_rise_index` (rapid pulse
+  rises >= 8 /min above the 60 s baseline per valid pulse hour), `hypoxic_burden` (%·min/h area of
+  >= 3 % desaturations below their baseline; an approximation, not the published event-window HB),
+  `flow_limitation_time_pct` / `flow_limitation_index` (device flow-limitation channel >= 0.2).
+- `inferred` – interpretations, not scored events: possible autonomic arousals (pulse rises,
+  split into linked to a respiratory event/desaturation/flow limitation vs `unexplained`), RERA
+  candidates (flow limitation ended by a recovery breath, outside device AHI events) and
+  `rdi_inferred`. No EEG is recorded: these are never arousals or RERAs in the clinical sense and
+  never change the device AHI.
+Pulse metrics need oximetry (only some nights); flow metrics exist for every detailed night.
 
 ## Notes
 - AHI = (apneas + hypopneas) per hour of use. Leak is in L/s (0.4 L/s = 24 L/min).
@@ -326,6 +341,40 @@ def build_server(
 
     @server.tool()
     @_guard
+    def disturbance_summary(
+        date: str, start: str | None = None, end: str | None = None, device_id: str | None = None
+    ) -> dict[str, Any]:
+        """Sleep disturbances beyond AHI for a night or a window: `measured` (pulse rate response
+        to events, rapid pulse rises, hypoxic burden, flow limitation) and `inferred` (possible
+        autonomic arousals, RERA candidates) metrics, plus timestamped `findings` and per-event
+        pulse responses. Inferred items are not scored arousals/RERAs."""
+        with state.store() as s:
+            dev = state.device(s, device_id)
+            d = state.day(s, dev, date)
+            a, b = state.window(d, start, end)
+            return state.out(dist.disturbance_summary(s, dev, a, b, ctx.thresholds))
+
+    @server.tool()
+    @_guard
+    def disturbance_trend(
+        date_from: str | None = None, date_to: str | None = None, device_id: str | None = None
+    ) -> dict[str, Any]:
+        """Nightly disturbance metrics (PRR, pulse-rise index, hypoxic burden, flow limitation,
+        inferred arousal and RERA-candidate indices) one row per night, with units/methods and the
+        mean per metric. Default: the last 14 days of data. Null = signal missing that night."""
+        with state.store() as s:
+            dev = state.device(s, device_id)
+            try:
+                end = analytics.parse_day(date_to or "last", ctx, s, dev)
+                start = analytics.parse_day(date_from, ctx, s, dev) if date_from else end - timedelta(days=13)
+            except AnalyticsError as exc:
+                raise ToolError(str(exc)) from None
+            if start > end:
+                raise ToolError("date_from must not be after date_to")
+            return state.out(dist.disturbance_trend(s, dev, start, end, ctx))
+
+    @server.tool()
+    @_guard
     def compare_periods(
         a_from: str, a_to: str, b_from: str, b_to: str, device_id: str | None = None
     ) -> dict[str, Any]:
@@ -400,9 +449,12 @@ def build_server(
             f"1. Call `night_summary(date={date!r})`.\n"
             "2. If a `find_anomalies` tool is available, call it for the same date and look at the "
             "top findings with `segment_stats` / `get_events` on the suspicious windows.\n"
-            "3. Always say which values are `device` and which are `derived` (provenance); "
+            f"3. For sleep quality beyond AHI call `disturbance_summary(date={date!r})`; report "
+            "`measured` and `inferred` metrics separately and call inferred arousals/RERAs "
+            "'possible', never scored events.\n"
+            "4. Always say which values are `device` and which are `derived` (provenance); "
             "mention notes about missing data.\n"
-            f"4. End with the disclaimer: {DISCLAIMER}"
+            f"5. End with the disclaimer: {DISCLAIMER}"
         )
 
     import pap_analytics.mcp_extras  # noqa: F401  (registers find_anomalies / plot_segment)

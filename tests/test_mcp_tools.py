@@ -8,7 +8,8 @@ from pap_analytics.mcp_server import build_server
 
 TOOLS = {
     "list_devices", "list_nights", "night_summary", "get_events", "segment_stats", "get_signal",
-    "get_signals", "oximetry_summary", "compare_periods", "get_settings", "find_anomalies", "plot_segment",
+    "get_signals", "oximetry_summary", "disturbance_summary", "disturbance_trend", "compare_periods",
+    "get_settings", "find_anomalies", "plot_segment",
 }  # fmt: skip
 
 
@@ -58,6 +59,8 @@ async def test_every_tool_callable_and_matches_schema(session) -> None:
         "segment_stats": {"date": "2026-11-08", "start": "02:00", "end": "02:30"},
         "get_signal": {"date": "2026-11-08", "start": "02:00", "end": "03:00", "channel": "leak"},
         "oximetry_summary": {"date": "2026-11-08"},
+        "disturbance_summary": {"date": "2026-11-08"},
+        "disturbance_trend": {"date_from": "2026-11-03", "date_to": "2026-11-08"},
         "compare_periods": {
             "a_from": "2026-10-16", "a_to": "2026-10-19",
             "b_from": "2026-10-20", "b_to": "2026-10-25",
@@ -83,6 +86,19 @@ async def test_night_summary_content(session) -> None:
     assert d["oximetry"]["metrics"]["spo2_min"]["value"] == 89
     assert d["sessions"][1]["start"].endswith("+01:00")
 
+
+@with_session
+async def test_disturbance_tools_separate_measured_and_inferred(session) -> None:
+    _, d = await call(session, "disturbance_summary", date="2026-11-08", start="23:00", end="06:00")
+    assert d["measured"]["prr_median"]["provenance"] == "derived"
+    assert d["measured"]["hypoxic_burden"]["unit"] == "%min/h"
+    assert "autonomic_arousal_index" in d["inferred"] and "prr_median" not in d["inferred"]
+    assert all(f["start"].endswith("+01:00") for f in d["findings"])
+    _, t = await call(session, "disturbance_trend", date_from="2026-11-03", date_to="2026-11-08")
+    assert [n["date"] for n in t["nights"]][-1] == "2026-11-08"
+    assert t["metrics"]["rdi_inferred"]["basis"] == "inferred"
+    res, _ = await call(session, "disturbance_trend", date_from="2026-11-08", date_to="2026-11-03")
+    assert res.isError
 
 @with_session
 async def test_segment_stats_local_times(session) -> None:
