@@ -6,7 +6,7 @@ Stable shape of the system. No history – decisions with rationale are in [DECI
 
 An MCP server that lets AI agents query and analyse PAP therapy data. It **reads** vendor data, **normalises** it into a canonical model, **stores** it locally and **answers** aggregate questions.
 
-Not in scope: writing to devices or source media, firmware, own respiratory event scoring (device events are the reference; derived disturbance *candidates* are listed separately and never enter AHI, see ADR-010), clinical diagnosis, multi-user hosting.
+Not in scope: writing to devices or source media, firmware, replacing device events as the AHI reference (own analyses such as breath-by-breath flow analysis are allowed when they add clear insight; they stay `derived`, separate and never enter AHI – ADR-011), sleep staging, clinical diagnosis, multi-user hosting.
 
 ## Components
 
@@ -82,7 +82,7 @@ Tools return compact JSON with explicit units and provenance; any time series is
 
 `list_devices`, `list_nights`, `night_summary`, `get_events`, `segment_stats`, `get_signal`, `get_signals`, `find_anomalies`, `compare_periods`, `get_settings`, `oximetry_summary`, `disturbance_summary`, `disturbance_trend`, optional `plot_segment`, admin `ingest` (disabled with `--read-only`). Resources: `pap://glossary`, `pap://devices`. Prompt: `nightly_review`.
 
-Disturbance results keep `measured` metrics (read off a signal: pulse response, pulse rises, hypoxic burden, flow limitation) apart from `inferred` ones (possible arousals, RERA candidates); both are `derived`.
+Disturbance results keep `measured` metrics (read off a signal: pulse response, pulse rises, hypoxic burden, flow limitation, calm/restless breathing from the 25 Hz flow with its coverage) apart from `inferred` ones (possible arousals, RERA candidates); both are `derived`.
 
 Exact signatures: [plan/WP-08-mcp-server.md](plan/WP-08-mcp-server.md).
 

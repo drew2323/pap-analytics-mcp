@@ -97,6 +97,9 @@ async def test_disturbance_tools_separate_measured_and_inferred(session) -> None
     _, t = await call(session, "disturbance_trend", date_from="2026-11-03", date_to="2026-11-08")
     assert [n["date"] for n in t["nights"]][-1] == "2026-11-08"
     assert t["metrics"]["rdi_inferred"]["basis"] == "inferred"
+    for key in ("calm_breathing_pct", "longest_calm_min", "restless_periods_per_h", "breathing_coverage_pct"):
+        assert key in d["measured"] and t["metrics"][key]["basis"] == "measured"
+    assert any(f["kind"] == "restless_breathing" for f in d["findings"])
     res, _ = await call(session, "disturbance_trend", date_from="2026-11-08", date_to="2026-11-03")
     assert res.isError
 

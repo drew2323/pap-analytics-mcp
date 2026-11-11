@@ -14,7 +14,7 @@ Embedded, no server, columnar, fast window/percentile queries; one directory wor
 ## ADR-004 – Aggregate-first MCP tools with provenance
 Agents get summaries, window statistics and downsampled series (≤ 300 points by default), never raw 25 Hz data – context budget. Every metric is labelled `device` or `derived` so agent answers do not pass computed numbers off as device values.
 
-## ADR-005 – No own respiratory event scoring in v1
+## ADR-005 – No own respiratory event scoring in v1 (superseded by ADR-011)
 Device-reported events are the reference. Derived analytics are limited to statistics, oximetry indices (ODI, T<90) and rule-based anomaly flags. Own scoring is a separate future decision.
 
 ## ADR-006 – Real personal data as committed test fixtures
@@ -31,3 +31,6 @@ The author's AirSense 11 runs modified firmware with all modes enabled and is sw
 
 ## ADR-010 – Disturbance metrics beyond AHI: measured vs. inferred, no own scoring
 Issue #21 asked for metrics that catch disturbances AHI misses. Available signals: device events, 0.5 Hz device flow limitation/tidal volume, and 1 Hz pulse/SpO2 on oximetry nights only (no EEG). We keep four metrics in adjusted form and split every result into `measured` (pulse response to device events, rapid pulse rises, desaturation-area hypoxic burden, flow-limitation episodes from the device channel) and `inferred` (possible autonomic arousals = pulse rises linked or not to a respiratory trigger, RERA candidates = flow limitation ended by a recovery breath outside device events). Inferred items are candidates, never enter AHI and are not stored (computed on demand), which keeps ADR-005 intact. Rejected: breath-by-breath flow-shape scoring from the 25 Hz waveform (that is own respiratory scoring and duplicates the device's flow-limitation estimate); the published event-window hypoxic burden (needs scored-event-based ensemble windows and longer recordings than many nights have); merging pulse rises into an "arousal index" without the measured/inferred split (would read as EEG arousals).
+
+## ADR-011 – Own signal analyses allowed when they add clear insight (supersedes ADR-005)
+ADR-005 excluded any own analysis of the respiratory signals; in practice that blocked useful insight (#23: half of the pulse rises unexplained by device events show a recovery breath or reduced breathing). New rule: own analyses, including breath-by-breath analysis of the 25 Hz flow, are allowed when they demonstrably add insight on real data. Constraints: results are `derived`, kept apart from device values, `measured` vs `inferred` stays explicit, coverage is reported when the source signal is incomplete, and device events remain the AHI reference (no own AHI). Each analysis is validated on the fixture data before it is added; e.g. inspiratory-shape flattening and leak jumps did not separate pulse rises from controls and were not added. Sleep staging is not done: without EEG or a reference night it cannot be validated; breathing is described as calm/restless only.

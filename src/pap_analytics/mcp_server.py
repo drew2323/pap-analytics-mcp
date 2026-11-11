@@ -68,7 +68,12 @@ All derived, in two groups that must not be mixed up:
   after a device apnea/hypopnea minus the 30 s pre-event median), `pulse_rise_index` (rapid pulse
   rises >= 8 /min above the 60 s baseline per valid pulse hour), `hypoxic_burden` (%·min/h area of
   >= 3 % desaturations below their baseline; an approximation, not the published event-window HB),
-  `flow_limitation_time_pct` / `flow_limitation_index` (device flow-limitation channel >= 0.2).
+  `flow_limitation_time_pct` / `flow_limitation_index` (device flow-limitation channel >= 0.2),
+  breathing stability from the 25 Hz flow: `calm_breathing_pct`, `longest_calm_min`,
+  `restless_periods_per_h`, `breathing_irregularity_median` and `breathing_coverage_pct` (share of the
+  session with 25 Hz flow; partial on some nights). **Calm/restless describe how regular breathing
+  is, not sleep stages** (no EEG). Each pulse rise carries its `breathing_response` (recovery breath
+  after, reduced breathing before).
 - `inferred` – interpretations, not scored events: possible autonomic arousals (pulse rises,
   split into linked to a respiratory event/desaturation/flow limitation vs `unexplained`), RERA
   candidates (flow limitation ended by a recovery breath, outside device AHI events) and
@@ -345,9 +350,10 @@ def build_server(
         date: str, start: str | None = None, end: str | None = None, device_id: str | None = None
     ) -> dict[str, Any]:
         """Sleep disturbances beyond AHI for a night or a window: `measured` (pulse rate response
-        to events, rapid pulse rises, hypoxic burden, flow limitation) and `inferred` (possible
-        autonomic arousals, RERA candidates) metrics, plus timestamped `findings` and per-event
-        pulse responses. Inferred items are not scored arousals/RERAs."""
+        to events, rapid pulse rises with their breathing response, hypoxic burden, flow limitation,
+        calm vs restless breathing) and `inferred` (possible autonomic arousals, RERA candidates)
+        metrics, plus timestamped `findings` (incl. restless breathing periods) and per-event pulse
+        responses. Inferred items are not scored arousals/RERAs; calm/restless is not sleep staging."""
         with state.store() as s:
             dev = state.device(s, device_id)
             d = state.day(s, dev, date)
@@ -360,8 +366,9 @@ def build_server(
         date_from: str | None = None, date_to: str | None = None, device_id: str | None = None
     ) -> dict[str, Any]:
         """Nightly disturbance metrics (PRR, pulse-rise index, hypoxic burden, flow limitation,
-        inferred arousal and RERA-candidate indices) one row per night, with units/methods and the
-        mean per metric. Default: the last 14 days of data. Null = signal missing that night."""
+        calm-breathing share, inferred arousal and RERA-candidate indices) one row per night, with
+        units/methods and the mean per metric. Default: the last 14 days of data. Null = signal
+        missing that night."""
         with state.store() as s:
             dev = state.device(s, device_id)
             try:
