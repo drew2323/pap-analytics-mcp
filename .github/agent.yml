@@ -1,0 +1,5 @@
+# Agent settings (agent-dispatch). Keys: runtime pi|hermes, model opus|sonnet, merge auto|review.
+# Issue labels override these; a missing key falls back to the dispatcher default.
+runtime: pi
+model: opus
+merge: auto   # merging does not deploy (releases are tags)
