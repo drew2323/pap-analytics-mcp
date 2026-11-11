@@ -10,19 +10,31 @@ Do not read or change other work packages' scope. If your package needs a change
 
 ## Working on a work package
 
-- One issue = one work package (or one explicitly named part of it). Status lives in Multica, never in the repo – do not add checkboxes, "done" markers or progress notes to `docs/plan/`.
+- One issue = one work package (or one explicitly named part of it). Status lives in GitHub issues, never in the repo – do not add checkboxes, "done" markers or progress notes to `docs/plan/`.
 - Stay inside the package's **Scope** and **Files** list. Anything listed under **Out of scope** belongs to another package.
 - Satisfy every **Acceptance** item and the shared Definition of Done (`docs/plan/README.md`). Write the tests first where practical.
 - Interfaces marked **Contract** in a package are consumed by other packages: implement them exactly; signature changes need a contract change.
-- If the plan is wrong or ambiguous, make the smallest reasonable assumption, state it in the PR and the issue, and continue. Significant/hard-to-reverse unknowns: ask in the issue and set it `blocked`.
+- If the plan is wrong or ambiguous, make the smallest reasonable assumption, state it in the PR and the issue, and continue. Significant/hard-to-reverse unknowns: ask one concrete question in the issue, label it `agent:blocked` and stop.
 
 ### Contract changes
 
 A change to the canonical model (`model.py`), the adapter protocol, the store API, analytics result types or MCP tool schemas is a **contract change**: update `docs/ARCHITECTURE.md` and the affected `docs/plan/WP-*.md` in the same PR, bump `SCHEMA_VERSION` when persisted data changes, and mention it in the PR title (`contract:`).
 
+## Workflow
+
+- Work arrives as a GitHub issue. Agents started by the dispatcher see the label `agent:working`; the same rules apply to any other channel (Claude Code on the web, local session, human).
+- One PR per issue, body contains `Closes #<n>`, summary and how it was verified. CI must be green before merge.
+- Finish with a short issue comment: what changed, PR link, verification, risks.
+
+## Delivery
+
+- **Merge:** auto — merge your own PR (squash) once the quality gate and CI are green.
+- **Needs David first** (label `agent:review`, do not merge): contract changes, persisted-data/`SCHEMA_VERSION` changes, `Dockerfile`/deployment/infrastructure changes.
+- **Deploy:** merging does not deploy. Releases are git tags `vX.Y.Z`, cut by David or on his request; the procedure is in `docs/OPERATIONS.md`.
+
 ## Development
 
-- Branch from `main`. Always work in your own `git worktree` on branch `dav-<n>-<short-name>` (`git worktree add -b dav-<n>-<name> ../pap-analytics-mcp-<name> main`), even for small changes. The shared checkout `~/Projects/pap-analytics-mcp` stays clean on `main`.
+- Branch from `main`. Always work in your own `git worktree` on branch `<issue>-<short-name>` (`git worktree add -b <issue>-<name> ../pap-analytics-mcp-<name> origin/main`), even for small changes. The shared checkout `~/Projects/pap-analytics-mcp` stays clean on `main`.
 - Worktree cleanup is mandatory: after your PR is merged/closed remove its worktree and branch and run `git worktree prune`. At the start of work inspect `git worktree list`; remove only worktrees confirmed to belong to merged/closed PRs, after checking branch, PR state, exact head SHA and tracked/untracked/ignored files for valuable work (preserve unique work as a bundle/patch first). A squash merge changes commit IDs – do not assume commits are redundant because the PR is merged. `--force` only after preservation.
 - Python ≥ 3.12, managed by `uv`. Add dependencies with `uv add` (runtime) or `uv add --dev`; keep them minimal, commit `uv.lock`.
 - Quality gate (must pass locally and in CI): `uv run ruff check . && uv run pytest`.
@@ -38,7 +50,7 @@ A change to the canonical model (`model.py`), the adapter protocol, the store AP
 
 ## Documentation (same PR, done by whoever changes the code)
 
-Files: `README.md` (entry point), `docs/ARCHITECTURE.md` (living stable shape, no history), `docs/DECISIONS.md` (short append-only log), `docs/plan/` (implementation specs). Roadmap, backlog and status live in Multica, not here.
+Files: `README.md` (entry point), `docs/ARCHITECTURE.md` (living stable shape, no history), `docs/DECISIONS.md` (short append-only log), `docs/plan/` (implementation specs). Roadmap, backlog and status live in GitHub issues, not here.
 
 Filter:
 1. Structure, interface/contract, data model/persistence, deployment, security model or a main-workflow invariant changed → edit `docs/ARCHITECTURE.md` in place.
@@ -47,7 +59,7 @@ Filter:
 
 Never document local implementation details, config values, limits, styling, texts, minor validation or bug fixes. Test: would someone safely changing another part later need to know this? If not, skip.
 
-Deployment: once `docs/OPERATIONS.md` exists (created by WP-10), read it before changing runtime, `Dockerfile` or deployment, and update it in the same PR when environments, hosts, sync or deploy procedure change.
+Deployment: read `docs/OPERATIONS.md` before changing runtime, `Dockerfile` or deployment, and update it in the same PR when environments, sync or the deploy procedure change.
 
 ## Safety
 

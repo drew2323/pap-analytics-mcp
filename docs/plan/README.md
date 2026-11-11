@@ -1,6 +1,6 @@
 # Implementation plan
 
-The plan is split into **work packages (WP)**. Each WP is self-contained: an agent reads `AGENTS.md`, `docs/ARCHITECTURE.md` and **one** `WP-*.md` and can deliver it. Status lives in Multica issues (one issue per WP), never here.
+The plan is split into **work packages (WP)**. Each WP is self-contained: an agent reads `AGENTS.md`, `docs/ARCHITECTURE.md` and **one** `WP-*.md` and can deliver it. Status lives in GitHub issues (one issue per WP), never here.
 
 ## Goal (v1)
 
