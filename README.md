@@ -180,6 +180,8 @@ uv run pytest && uv run ruff check .
 The tests run against real ResMed nights published as fixtures in [`tests/data/`](tests/data/README.md).
 Before contributing, read [`AGENTS.md`](AGENTS.md) (repository rules) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+[`CLAUDE.md`](CLAUDE.md) points Claude Code to `AGENTS.md`, which is the single source of repository rules. Work is tracked as GitHub issues: one issue = one PR (body contains `Closes #<n>`), developed in its own git worktree, merged after the local quality gate and CI are green. Details are in the Workflow and Delivery sections of `AGENTS.md`.
+
 | Doc | Content |
 |---|---|
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Components, canonical data model, contracts |
