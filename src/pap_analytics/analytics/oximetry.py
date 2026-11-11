@@ -10,6 +10,10 @@ Definition used (documented because oximetry indices vary between tools):
   moment. It lasts while samples stay ≤ frozen baseline − drop and ends at the first sample
   above that level or at a gap. It counts when it lasts ≥ ``min_duration_s``.
 * ODI = desaturations per *valid* hour.
+* Hypoxic burden (desaturation-based approximation, not the event-window method of Azarbarzin
+  et al.): for every >= 3 % desaturation the area between its frozen baseline and SpO2, from where
+  SpO2 left the baseline (searched back <= ``AREA_EXTEND_S``) until it recovers to baseline − 1 %
+  (searched forward <= ``AREA_EXTEND_S``, stops at gaps); sum in %·min per valid hour.
 
 Not clinical interpretation.
 """
@@ -37,6 +41,7 @@ DEFAULTS: dict[str, float] = {
     "association_window_s": 30.0,
 }
 MAX_LISTED = 100
+AREA_EXTEND_S = 60.0  # how far a desaturation's area may extend beyond its >= drop core, each side
 
 
 @dataclass
@@ -104,6 +109,21 @@ def _detect(
     return out
 
 
+def desaturation_area(v: np.ndarray, rate: float, a: int, b: int, base: float) -> float:
+    """Area (%·s) between ``base`` and SpO2 for the desaturation core ``[a, b)`` of filtered ``v``,
+    extended back to where SpO2 left the baseline and forward until it is back within 1 %."""
+    ext = int(round(AREA_EXTEND_S * rate))
+    k = a
+    while k > 0 and a - k < ext and np.isfinite(v[k - 1]) and v[k - 1] < base:
+        k -= 1
+    m = b
+    while m < len(v) and m - b < ext and np.isfinite(v[m]) and v[m] < base - 1.0:
+        m += 1
+    seg = v[k:m]
+    seg = seg[np.isfinite(seg)]
+    return float(np.clip(base - seg, 0.0, None).sum()) / rate
+
+
 def detect_desaturations(
     spo2: ChannelData, drop_pct: float = 3.0, min_duration_s: float = 10.0, baseline_window_s: float = 120.0
 ) -> list[Event]:
@@ -161,19 +181,26 @@ def oximetry_summary(
         "t88_min": _m(float((allv < 88).sum()) / rate / 60, "min", "time with SpO2 < 88 %"),
     }  # fmt: skip
     events: dict[float, list[tuple[float, datetime, float, float, float]]] = {3.0: [], 4.0: []}
+    areas: dict[datetime, float] = {}  # %·s per >= 3 % desaturation, keyed by start
     for drop in events:
         for p, f in zip(parts, filtered, strict=True):
             for a, b, base, nadir in _detect(
                 f, p.rate_hz, drop, t["desat_min_duration_s"], t["baseline_window_s"]
             ):
-                events[drop].append(
-                    (drop, p.start + timedelta(seconds=a / p.rate_hz), (b - a) / p.rate_hz, base, nadir)
-                )  # fmt: skip
+                s = p.start + timedelta(seconds=a / p.rate_hz)
+                events[drop].append((drop, s, (b - a) / p.rate_hz, base, nadir))
+                if drop == 3.0:
+                    areas[s] = desaturation_area(f, p.rate_hz, a, b, base)
     hours = valid_s / 3600
     metrics["odi3"] = _m(len(events[3.0]) / hours, "1/h", "desaturations >=3 % per valid hour")
     metrics["odi4"] = _m(len(events[4.0]) / hours, "1/h", "desaturations >=4 % per valid hour")
     metrics["desat3_count"] = _m(float(len(events[3.0])), "count")
     metrics["desat4_count"] = _m(float(len(events[4.0])), "count")
+    metrics["hypoxic_burden"] = _m(
+        sum(areas.values()) / 60 / hours, "%min/h",
+        "area between baseline and SpO2 of >=3 % desaturations per valid hour "
+        "(desaturation-based approximation, not event-window HB)",
+    )  # fmt: skip
     # pulse, restricted to samples with valid SpO2 when the two channels are aligned
     pv = []
     for q in pulses:
@@ -205,6 +232,7 @@ def oximetry_summary(
     four = {e[1] for e in events[4.0]}
     desats = [
         {"start": s, "duration_s": dur, "baseline": base, "nadir": nadir, "depth": base - nadir,
+         "area_pct_min": areas.get(s, 0.0) / 60,
          "meets_odi4": s in four, "type": EventType.DESATURATION.value, "provenance": "derived"}
         for _, s, dur, base, nadir in listed[:MAX_LISTED]
     ]  # fmt: skip

@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from pap_analytics.analytics.anomalies import DEFAULTS as _ANOMALY
+from pap_analytics.analytics.disturbances import DEFAULTS as _DIST
 from pap_analytics.analytics.oximetry import DEFAULTS as _OXIMETRY
 
 LARGE_LEAK_LPS = 0.4
@@ -29,6 +30,13 @@ SPECS: dict[str, tuple[float, float | None, float | None, bool]] = {
     "baseline_window_s": (_OXIMETRY["baseline_window_s"], 1.0, None, False),
     "desat_min_duration_s": (_OXIMETRY["desat_min_duration_s"], 0.0, None, False),
     "association_window_s": (_OXIMETRY["association_window_s"], 0.0, None, False),
+    "pulse_rise_bpm": (_DIST["pulse_rise_bpm"], 1.0, None, False),
+    "pulse_rise_min_s": (_DIST["pulse_rise_min_s"], 0.0, None, False),
+    "pulse_baseline_s": (_DIST["pulse_baseline_s"], 10.0, None, False),
+    "link_window_s": (_DIST["link_window_s"], 0.0, None, False),
+    "fl_threshold": (_DIST["fl_threshold"], 0.01, 1.0, False),
+    "fl_min_s": (_DIST["fl_min_s"], 0.0, None, False),
+    "rera_recovery_ratio": (_DIST["rera_recovery_ratio"], 1.0, None, False),
 }
 
 
