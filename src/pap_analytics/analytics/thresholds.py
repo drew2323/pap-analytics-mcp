@@ -37,6 +37,10 @@ SPECS: dict[str, tuple[float, float | None, float | None, bool]] = {
     "fl_threshold": (_DIST["fl_threshold"], 0.01, 1.0, False),
     "fl_min_s": (_DIST["fl_min_s"], 0.0, None, False),
     "rera_recovery_ratio": (_DIST["rera_recovery_ratio"], 1.0, None, False),
+    "recovery_breath_ratio": (_DIST["recovery_breath_ratio"], 1.0, None, False),
+    "reduced_breath_ratio": (_DIST["reduced_breath_ratio"], 0.0, 1.0, False),
+    "restless_irregularity": (_DIST["restless_irregularity"], 0.01, None, False),
+    "restless_min_s": (_DIST["restless_min_s"], 0.0, None, False),
 }
 
 

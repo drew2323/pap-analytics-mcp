@@ -7,7 +7,7 @@ Everything here is ``derived`` and split into two explicit groups:
   device's ``flow_limitation`` channel.
 * **inferred** – interpretations of measured phenomena: *possible autonomic arousals* (pulse rises)
   and *RERA candidates* (flow limitation followed by a recovery breath). Neither is a scored
-  arousal or RERA (no EEG; see ADR-010); they are never added to
+  arousal or RERA (no EEG; see ADR-010/ADR-011); they are never added to
   the device AHI.
 
 Definitions (thresholds are ``DEFAULTS``, overridable via ``[thresholds]``):
@@ -23,7 +23,16 @@ Definitions (thresholds are ``DEFAULTS``, overridable via ``[thresholds]``):
   last ``PULSE_RISE_WITHIN_S`` (rapid, not a drift); it ends when pulse falls below baseline + half
   the rise (baseline frozen at onset) and counts when it lasted >= ``pulse_rise_min_s``.
   Each rise is linked to what preceded it (device respiratory event, desaturation, flow-limitation
-  episode, device arousal mark, within ``link_window_s``) or marked ``unexplained``.
+  episode, device arousal mark, within ``link_window_s``) and to its **breathing response**:
+  ``recovery_breath`` when the max device tidal volume in the ``RISE_RESPONSE_S`` after the rise
+  start is >= ``recovery_breath_ratio`` x the median of ``[-120 s, -30 s)``; ``reduced_breathing``
+  when the smallest 25 Hz breath in the 30 s before is <= ``reduced_breath_ratio`` x the median
+  breath of that baseline (see ``breathing``). A rise with none of these is ``unexplained``.
+* **Breathing stability** (``breathing``): 30 s epochs of the 25 Hz flow classified ``calm`` /
+  ``restless`` by breath-to-breath irregularity; restless periods are linked to overlapping device
+  respiratory events, pulse rises and desaturations. Describes breathing regularity, not sleep
+  stages. ``breathing_coverage_pct`` = 25 Hz flow time / session data time (flow is incomplete on
+  some nights).
 * **Flow-limitation episode**: device ``flow_limitation`` >= ``fl_threshold`` for >= ``fl_min_s``
   (gaps of one sample bridged).
 * **RERA candidate**: a flow-limitation episode not overlapping a device apnea/hypopnea (± 10 s) and
@@ -43,6 +52,8 @@ from typing import Any
 
 import numpy as np
 
+from pap_analytics.analytics import breathing as br
+from pap_analytics.analytics.breathing import DEFAULTS as BREATHING_DEFAULTS
 from pap_analytics.analytics.nights import AHI_TYPES
 from pap_analytics.analytics.oximetry import _detect, _thr, filter_artefacts, oximetry_summary
 from pap_analytics.analytics.results import AnalyticsError
@@ -58,6 +69,9 @@ DEFAULTS: dict[str, float] = {
     "fl_threshold": 0.2,
     "fl_min_s": 10.0,
     "rera_recovery_ratio": 1.5,
+    "recovery_breath_ratio": 1.5,
+    "reduced_breath_ratio": 0.3,
+    **BREATHING_DEFAULTS,
 }
 PULSE_RANGE = (30.0, 220.0)
 PULSE_MAX_STEP = 10.0  # /min between consecutive 1 s samples; larger steps are artefacts
@@ -67,6 +81,8 @@ PRR_RESPONSE_S = 30.0
 HYPOPNEA_ASSUMED_S = 10.0
 RECOVERY_S = 16.0
 AHI_OVERLAP_S = 10.0
+RISE_RESPONSE_S = 20.0
+RISE_BASELINE_S = (120.0, 30.0)  # baseline window [t - 120 s, t - 30 s) for breathing responses
 MAX_LISTED = 200
 
 
@@ -227,6 +243,98 @@ def recovery_ratio(volume: np.ndarray, a: int, b: int, rate: float) -> float | N
     return float(after.max() / np.median(during))
 
 
+def _window(parts: Sequence[ChannelData], a: datetime, b: datetime) -> np.ndarray:
+    """Finite values of the part covering ``[a, b)`` (empty when no single part covers ``a``)."""
+    for p in parts:
+        i0 = int(np.ceil((a - p.start).total_seconds() * p.rate_hz - 1e-9))
+        if 0 <= i0 < len(p.values):
+            i1 = min(len(p.values), int(np.ceil((b - p.start).total_seconds() * p.rate_hz - 1e-9)))
+            w = p.values[i0:i1].astype(np.float64)
+            return w[np.isfinite(w)]
+    return np.empty(0)
+
+
+def recovery_breath_ratio(tidal_volume: Sequence[ChannelData], t: datetime) -> float | None:
+    """max(tidal volume in [t, t + 20 s]) / median(tidal volume in [t − 120 s, t − 30 s))."""
+    lo, hi = RISE_BASELINE_S
+    base = _window(tidal_volume, t - timedelta(seconds=lo), t - timedelta(seconds=hi))
+    post = _window(tidal_volume, t, t + timedelta(seconds=RISE_RESPONSE_S))
+    if len(base) < 5 or not len(post) or np.median(base) <= 0:
+        return None
+    return float(post.max() / np.median(base))
+
+
+def _breath_ratio(segmented: Sequence[br.Breaths], ends: Sequence[datetime], t: datetime) -> float | None:
+    for b, end in zip(segmented, ends, strict=True):
+        if b.origin <= t < end:
+            return br.breath_ratio_before(b, (t - b.origin).total_seconds())
+    return None
+
+
+def _overlaps(a: datetime, b: datetime, spans: Sequence[tuple[datetime, datetime]]) -> bool:
+    return any(s <= b and a <= e for s, e in spans)
+
+
+def breathing_stability(
+    flow: Sequence[ChannelData], reference_s: float, t: Mapping[str, float]
+) -> tuple[dict[str, Metric], list[dict[str, Any]], list[br.Breaths], list[datetime]]:
+    """Breathing-stability metrics, restless periods (unlinked) and the segmented breaths per part."""
+    segmented: list[br.Breaths] = []
+    ends: list[datetime] = []
+    states: list[str] = []
+    irr_all: list[np.ndarray] = []
+    periods: list[dict[str, Any]] = []
+    longest = 0
+    flow_s = 0.0
+    for p in flow:
+        dur = len(p.values) / p.rate_hz
+        flow_s += dur
+        b = br.segment_breaths(p)
+        segmented.append(b)
+        ends.append(p.start + timedelta(seconds=dur))
+        irr = br.epoch_irregularity(b, dur)
+        st = br.epoch_states(irr, t["restless_irregularity"])
+        irr_all.append(irr)
+        states += st
+        for a, e, state in br.runs(st):
+            if state == br.CALM:
+                longest = max(longest, e - a)
+            if state == br.RESTLESS and (e - a) * br.EPOCH_S >= t["restless_min_s"]:
+                periods.append({
+                    "kind": "restless_breathing", "basis": "measured",
+                    "start": p.start + timedelta(seconds=a * br.EPOCH_S),
+                    "end": p.start + timedelta(seconds=e * br.EPOCH_S),
+                    "duration_s": (e - a) * br.EPOCH_S,
+                    "irregularity": float(np.nanmedian(irr[a:e])),
+                })  # fmt: skip
+    metrics: dict[str, Metric] = {}
+    if not flow:
+        return metrics, periods, segmented, ends
+    calm = states.count(br.CALM)
+    classified = calm + states.count(br.RESTLESS)
+    irr = np.concatenate(irr_all) if irr_all else np.empty(0)
+    irr = irr[np.isfinite(irr)]
+    flow_h = flow_s / 3600
+    ref = reference_s if reference_s > 0 else flow_s
+    metrics["breathing_coverage_pct"] = _m(
+        min(100.0, 100 * flow_s / ref) if ref else None, "%", "25 Hz flow time / session data time"
+    )  # fmt: skip
+    metrics["calm_breathing_pct"] = _m(
+        100 * calm / classified if classified else None, "%",
+        f"calm 30 s epochs (irregularity < {t['restless_irregularity']:g}) of classified epochs",
+    )  # fmt: skip
+    metrics["longest_calm_min"] = _m(longest * br.EPOCH_S / 60, "min", "longest run of calm epochs")
+    metrics["restless_periods_per_h"] = _m(
+        len(periods) / flow_h if flow_h else None, "1/h",
+        f"restless breathing periods >= {t['restless_min_s']:g} s per hour of 25 Hz flow",
+    )  # fmt: skip
+    metrics["breathing_irregularity_median"] = _m(
+        float(np.median(irr)) if len(irr) else None, "",
+        "median over epochs of mean CV(tidal volume, breath period) in 2 min windows",
+    )  # fmt: skip
+    return metrics, periods, segmented, ends
+
+
 # ---- summary ---------------------------------------------------------------------------------
 
 
@@ -309,6 +417,23 @@ def disturbance_summary(
     if ox is not None and "hypoxic_burden" in ox.metrics:
         measured["hypoxic_burden"] = ox.metrics["hypoxic_burden"]
 
+    # breathing stability from the 25 Hz flow
+    flow_parts = store.channel_window(device_id, "flow", start, end)
+    b_metrics, restless, segmented, flow_ends = breathing_stability(flow_parts, fl_s, t)
+    measured.update(b_metrics)
+    if not flow_parts:
+        notes.append(
+            "no 25 Hz flow in this window; breathing stability and reduced-breathing links are missing"
+        )
+    elif (
+        b_metrics["breathing_coverage_pct"].value is not None
+        and b_metrics["breathing_coverage_pct"].value < 90
+    ):
+        notes.append(
+            f"25 Hz flow covers only {b_metrics['breathing_coverage_pct'].value:.0f} % of the session data; "
+            "breathing stability describes that part only"
+        )  # fmt: skip
+
     # pulse
     pulse_valid_s = 0.0
     rises: list[dict[str, Any]] = []
@@ -325,7 +450,14 @@ def disturbance_summary(
                 ("respiratory_event", resp_spans, 5.0), ("desaturation", desat_spans, link),
                 ("flow_limitation", fl_spans, 0.0), ("device_arousal", arousal_marks, link),
             ) if _near(s, spans, before, link)]  # fmt: skip
+            rec = recovery_breath_ratio(tv_parts, s)
+            red = _breath_ratio(segmented, flow_ends, s)
+            if rec is not None and rec >= t["recovery_breath_ratio"]:
+                linked.append("recovery_breath")
+            if red is not None and red <= t["reduced_breath_ratio"]:
+                linked.append("reduced_breathing")
             rises.append({"kind": "pulse_rise", "basis": "measured", **r,
+                          "breathing_response": {"recovery_ratio": rec, "reduced_before_ratio": red},
                           "linked_to": linked or ["unexplained"]})  # fmt: skip
         for e in resp:
             pr = pulse_response(q, v, e)
@@ -365,7 +497,15 @@ def disturbance_summary(
         )  # fmt: skip
         inferred["respiratory_arousal_index"] = _m(
             (len(rises) - unexplained) / pulse_hours, "1/h",
-            "possible arousals linked to a respiratory event, desaturation or flow limitation",
+            "possible arousals linked to a respiratory event, desaturation, flow limitation "
+            "or a breathing response (recovery breath / reduced breathing)",
+        )  # fmt: skip
+        with_response = sum(
+            1 for r in rises if {"recovery_breath", "reduced_breathing"} & set(r["linked_to"])
+        )  # fmt: skip
+        measured["pulse_rise_breathing_response_pct"] = _m(
+            100 * with_response / len(rises) if rises else None, "%",
+            "pulse rises with a recovery breath after or reduced breathing before",
         )  # fmt: skip
         inferred["unexplained_arousal_index"] = _m(
             unexplained / pulse_hours, "1/h", "possible arousals without a respiratory trigger in the data"
@@ -381,7 +521,14 @@ def disturbance_summary(
             (len(resp) + len(rera)) / fl_hours, "1/h",
             "(device apneas/hypopneas + RERA candidates) per hour; inferred, not a device RDI",
         )  # fmt: skip
-    findings += rises + rera
+    for period in restless:
+        a, b = period["start"], period["end"]
+        linked = [name for name, spans in (
+            ("respiratory_event", resp_spans), ("desaturation", desat_spans),
+            ("pulse_rise", [(r["start"], r["end"]) for r in rises]),
+        ) if _overlaps(a, b, spans)]  # fmt: skip
+        period["linked_to"] = linked or ["none"]
+    findings += rises + rera + restless
     findings.sort(key=lambda x: x["start"])
     if len(findings) > MAX_LISTED:
         notes.append(f"findings capped to {MAX_LISTED} of {len(findings)}")
@@ -405,6 +552,9 @@ def night_disturbances(store: Store, device_id: str, day: date, ctx: Context) ->
 TREND_KEYS = (
     ("measured", "prr_median"), ("measured", "pulse_rise_index"), ("measured", "hypoxic_burden"),
     ("measured", "flow_limitation_time_pct"), ("measured", "flow_limitation_index"),
+    ("measured", "calm_breathing_pct"), ("measured", "longest_calm_min"),
+    ("measured", "restless_periods_per_h"), ("measured", "breathing_coverage_pct"),
+    ("measured", "pulse_rise_breathing_response_pct"),
     ("inferred", "autonomic_arousal_index"), ("inferred", "unexplained_arousal_index"),
     ("inferred", "rera_candidate_index"), ("inferred", "rdi_inferred"),
 )  # fmt: skip

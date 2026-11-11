@@ -116,7 +116,7 @@ Every tool returns compact JSON with units and provenance (`device` or `derived`
 | `get_signal` | One channel (flow, pressure, leak, resp. rate, tidal volume, SpO2, …) downsampled to ≤ 2000 points |
 | `get_signals` | Several channels on one time grid at full resolution, for a close look at a short window (breath by breath) |
 | `oximetry_summary` | SpO2 and pulse: mean, minimum, T90, ODI 3 %/4 %, hypoxic burden, list of desaturations, artefacts filtered out |
-| `disturbance_summary` | Disturbances beyond AHI in a night or window: pulse response to events, rapid pulse rises, hypoxic burden, flow limitation (measured) and possible arousals / RERA candidates (inferred, kept separate), with timestamps |
+| `disturbance_summary` | Disturbances beyond AHI in a night or window: pulse response to events, rapid pulse rises and their breathing response, hypoxic burden, flow limitation, calm vs. restless breathing (measured) and possible arousals / RERA candidates (inferred, kept separate), with timestamps |
 | `disturbance_trend` | The same disturbance metrics as one comparable row per night, with means over the range |
 | `compare_periods` | Average nightly metrics of two periods with the absolute and relative change |
 | `get_settings` | Device settings in effect on a date, or the full history of changes |
@@ -165,7 +165,7 @@ Not just a thin wrapper around files – the server has its own analytics layer:
 
 - **Ingest:** own EDF/EDF+ reader and vendor adapters normalise the data into one vendor-neutral model; imports are incremental.
 - **Store:** DuckDB catalog plus per-channel Parquet signals, rebuildable from the source at any time.
-- **Analytics:** window statistics, event clustering, anomaly ranking, SpO2 (T90, ODI, desaturations, hypoxic burden), disturbances beyond AHI (pulse responses, flow limitation, possible arousals), period comparison, settings history.
+- **Analytics:** window statistics, event clustering, anomaly ranking, SpO2 (T90, ODI, desaturations, hypoxic burden), disturbances beyond AHI (pulse responses, flow limitation, breath-by-breath breathing stability, possible arousals), period comparison, settings history.
 - **Interface:** 15 MCP tools, resources and a prompt over stdio or HTTP (bearer token) – for desktop agents, coding agents and voice assistants.
 
 Python 3.12, NumPy, PyArrow, the official MCP SDK; matplotlib optional. Details in [ARCHITECTURE](docs/ARCHITECTURE.md).

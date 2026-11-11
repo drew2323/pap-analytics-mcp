@@ -71,6 +71,15 @@ port = 8765
 # fl_threshold = 0.2            # 0.01..1. Device flow-limitation value that counts as flow limited.
 # fl_min_s = 10.0               # s, >= 0. Flow limitation must last this long to form an episode.
 # rera_recovery_ratio = 1.5     # >= 1. Recovery breath after an episode: max tidal volume / median during it.
+# recovery_breath_ratio = 1.5   # >= 1. Pulse rise has a recovery breath when max tidal volume in the 20 s after it
+#                               # is >= ratio x the median of the baseline (120..30 s before).
+# reduced_breath_ratio = 0.3    # 0..1. Pulse rise has reduced breathing before it when the smallest 25 Hz breath
+#                               # in the 30 s before is <= ratio x the median baseline breath.
+
+# --- Breathing stability (calm vs restless breathing from 25 Hz flow; not sleep stages) ---
+# restless_irregularity = 0.3   # >= 0.01. A 30 s epoch is restless when the mean CV of tidal volume and breath
+#                               # period over 2 min reaches this (fixture nights: median 0.21, p75 0.29).
+# restless_min_s = 60.0         # s, >= 0. Restless epochs must last this long to form a restless period.
 
 # Deliberately NOT configurable (hardcoded): desaturation depths of 3 % / 4 % (ODI3 / ODI4),
 # the 60 s merge of nearby low-SpO2 spans, and the minimum absolute deviation per outlier metric.

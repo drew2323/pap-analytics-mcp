@@ -25,7 +25,7 @@ Point the agent to the parts of a night worth looking at, and optionally render 
 ```
 
 ## Out of scope
-Machine learning, own event scoring (ADR-005).
+Machine learning, replacing device events as the AHI reference (ADR-011).
 
 ## Files
 `src/pap_analytics/analytics/{anomalies,plot}.py`, `src/pap_analytics/mcp_extras.py`, `tests/test_anomalies.py`, `tests/test_plot.py`.
