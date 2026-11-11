@@ -84,6 +84,8 @@ Concrete hosts, addresses and the live setup are kept outside this public reposi
 
 ## Install, update, rollback
 
+Merging does not deploy; release policy (who merges, what needs David) is in `AGENTS.md` → Delivery.
+
 Native:
 1. Install a **released tag**, never the development checkout:
    `uv tool install --force "git+https://github.com/drew2323/pap-analytics-mcp@vX.Y.Z"`.
