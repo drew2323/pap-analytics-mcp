@@ -28,7 +28,7 @@ A change to the canonical model (`model.py`), the adapter protocol, the store AP
 
 ## Delivery
 
-- **Merge:** auto — merge your own PR (squash) once the quality gate and CI are green.
+- **Merge:** per `.github/agent.yml` (`merge: auto` → squash-merge your own PR once the quality gate and CI are green; `review` → do not merge, label `agent:review`).
 - **Needs David first** (label `agent:review`, do not merge): contract changes, persisted-data/`SCHEMA_VERSION` changes, `Dockerfile`/deployment/infrastructure changes.
 - **Deploy:** merging does not deploy. Releases are git tags `vX.Y.Z`, cut by David or on his request; the procedure is in `docs/OPERATIONS.md`.
 
