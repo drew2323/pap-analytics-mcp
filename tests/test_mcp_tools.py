@@ -171,11 +171,13 @@ async def test_settings_and_resources_and_prompt(session) -> None:
     glossary = (await session.read_resource("pap://glossary")).contents[0].text
     assert "Therapy mode" in glossary
     assert "Therapy day" in glossary and "not a diagnosis" in glossary and "tidal_volume" in glossary
+    assert "include_disturbances=true" in glossary and "not sleep time" in glossary
     devices = json.loads((await session.read_resource("pap://devices")).contents[0].text)
     assert devices[0]["model"] == "AirSense11AutoSet"
     p = await session.get_prompt("nightly_review", {"date": "2026-11-08"})
     text = p.messages[0].content.text
     assert "night_summary" in text and "provenance" in text and "diagnosis" in text
+    assert "disturbance_trend" in text and "include_disturbances=true" in text
 
 
 async def test_no_store_gives_actionable_error(tmp_path: Path) -> None:

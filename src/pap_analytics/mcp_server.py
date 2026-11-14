@@ -88,6 +88,20 @@ All derived, in two groups that must not be mixed up:
   device AHI.
 Pulse metrics need oximetry (only some nights); flow metrics exist for every detailed night.
 
+## Comparing nights and periods
+- Judge a night against nearby nights of the same `mode` (`disturbance_trend` over about two
+  weeks), not against absolute values.
+- Before/after a change (pressure, mask, mode): `compare_periods(..., include_disturbances=true)`
+  with several nights per period. Shape metrics are only comparable when `flow_shape_ps_pct` is
+  similar; check `breathing_coverage_pct` and pulse hours too, because partial nights pull means.
+
+## Interpretation limits
+- Usage time is mask-on time, not sleep time.
+- A low AHI or normal SpO2 only means no respiratory events or desaturations were evident in the
+  recorded signals, not that sleep was restful or uninterrupted.
+- Describe values and timing; name a mechanism only as a hypothesis. Do not propose pressure or
+  mode changes as an experiment; that is for the treating physician.
+
 ## Notes
 - AHI = (apneas + hypopneas) per hour of use. Leak is in L/s (0.4 L/s = 24 L/min).
 - `coverage_pct` is the share of the window with valid samples.
@@ -479,9 +493,13 @@ def build_server(
             f"3. For sleep quality beyond AHI call `disturbance_summary(date={date!r})`; report "
             "`measured` and `inferred` metrics separately and call inferred arousals/RERAs "
             "'possible', never scored events.\n"
-            "4. Always say which values are `device` and which are `derived` (provenance); "
+            "4. Put the night in context: `disturbance_trend` for about the two weeks before; compare "
+            "only with nights of the same mode, and for a before/after question use "
+            "`compare_periods(..., include_disturbances=true)` (see `pap://glossary`, "
+            "'Comparing nights and periods').\n"
+            "5. Always say which values are `device` and which are `derived` (provenance); "
             "mention notes about missing data.\n"
-            f"5. End with the disclaimer: {DISCLAIMER}"
+            f"6. End with the disclaimer: {DISCLAIMER}"
         )
 
     import pap_analytics.mcp_extras  # noqa: F401  (registers find_anomalies / plot_segment)
