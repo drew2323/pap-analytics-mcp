@@ -453,7 +453,8 @@ def build_server(
                 reports = run_ingest(config, source=Path(source) if source else None)
             except StoreLockedError as exc:
                 raise ToolError(f"another ingest is running: {exc}") from None
-            return state.out({"reports": reports})
+            cache = dist.refresh_trend_cache_for(config)
+            return state.out({"reports": reports, "trend_cache": cache})
 
     @server.resource("pap://glossary", mime_type="text/markdown")
     def glossary() -> str:

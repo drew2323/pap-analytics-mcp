@@ -74,7 +74,7 @@ Every metric returned by analytics/MCP carries `provenance`: `device` = value re
 - Catalog tables: `meta(schema_version)`, `devices`, `sessions`, `channels`, `events`, `therapy_days`, `day_metrics`, `settings`, `ingest_log`.
 - Ingest is idempotent; the newest (possibly still growing) session is re-ingested when its fingerprint changes and stays `complete=false` while it may grow.
 - Single writer (ingest holds a lock file); the MCP server opens the store read-only and sees new data after ingest commits. Readers retry briefly on a lock conflict, then return a clear "data is being updated" error.
-- Outside the catalog, `sync_state.json` in the store directory records the last sync attempt per source (not part of the canonical model; disposable).
+- Outside the catalog, `sync_state.json` in the store directory records the last sync attempt per source, and `trend_cache.json` holds precomputed nightly `disturbance_trend` rows (written after each ingest; a row is used only while its key – the night's session fingerprints, package version and analysis settings – matches, otherwise the night is computed live). Neither is part of the canonical model; both are disposable.
 
 ## MCP surface (contract)
 

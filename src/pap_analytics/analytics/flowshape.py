@@ -67,97 +67,175 @@ class BreathShapes:
     def flow_limited(self, ned_fl_pct: float = 20.0) -> np.ndarray:
         return self.valid & ((self.ned_pct > ned_fl_pct) | (self.fi >= FI_FL))
 
-def _multi_peak(x: np.ndarray, bump: float = 1.0) -> bool:
-    """Upstream state machine: after the first peak, a dip > ``bump`` followed by a rise > ``bump``."""
-    first, looking = False, False
-    last_max = low = 0.0
-    for val in x:
-        if not first:
-            if val > last_max:
-                last_max = val
-            elif val < last_max:
-                first = True
-        elif not looking and last_max - val > bump:
-            looking, low = True, val
-        if looking:
-            if val < low:
-                low = val
-            elif val > low + bump:
-                return True
-    return False
+def _segments(starts: np.ndarray, ends: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Concatenated sample indices of the ranges ``[starts[i], ends[i])``, their segment id and
+    position within the segment (empty ranges contribute nothing)."""
+    lens = np.maximum(ends - starts, 0)
+    seg = np.repeat(np.arange(len(lens)), lens)
+    first = np.cumsum(lens) - lens
+    pos = np.arange(int(lens.sum())) - np.repeat(first, lens)
+    return starts[seg] + pos, seg, pos
 
-def _bounds(v: np.ndarray, peak: int, level: float, stop: int) -> tuple[int, int]:
-    s = peak
-    while s > 0 and v[s - 1] > level:
-        s -= 1
-    e = peak
-    while e < stop and v[e] > level:
-        e += 1
-    return s, e
+def _seg_sum(seg: np.ndarray, values: np.ndarray, n: int) -> np.ndarray:
+    return np.bincount(seg, weights=values, minlength=n)
+
+def _seg_max(seg: np.ndarray, values: np.ndarray, n: int) -> np.ndarray:
+    out = np.full(n, -np.inf)
+    np.maximum.at(out, seg, values)
+    return out
+
+def _run_bounds(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For every index: start and end (exclusive) of the run of True values containing it."""
+    n = len(mask)
+    idx = np.arange(n)
+    start = np.where(mask, -1, idx)  # index of the last False at or before i
+    np.maximum.accumulate(start, out=start)
+    end = np.where(mask, n, idx)[::-1]  # index of the first False at or after i
+    np.minimum.accumulate(end, out=end)
+    return start + 1, end[::-1]
+
+def _multi_peak(x: np.ndarray, seg: np.ndarray, pos: np.ndarray, n: int, bump: float = 1.0) -> np.ndarray:
+    """Upstream state machine per segment, vectorised: after the first peak (first sample below the
+    running max, which starts at 0), a dip > ``bump`` below that peak, then a rise > ``bump`` above
+    the lowest value since the dip started."""
+    out = np.zeros(n, bool)
+    if not len(x):
+        return out
+    big = 2.0 * (float(np.abs(x).max()) + bump + 1.0)
+    off = seg * big
+    run_max = np.maximum.accumulate(np.maximum(x, 0.0) + off) - off  # max(0, x[:k+1]) per segment
+    prev_max = np.where(pos == 0, 0.0, np.concatenate(([0.0], run_max[:-1])))
+    first_at = np.full(n, np.iinfo(np.int64).max)
+    is_first = x < prev_max
+    np.minimum.at(first_at, seg[is_first], pos[is_first])
+    peak = np.zeros(n)
+    has = first_at < np.iinfo(np.int64).max
+    # running max frozen at the first decrease = max(0, x[:first]) = prev_max at that sample
+    peak[seg[is_first & (pos == first_at[seg])]] = prev_max[is_first & (pos == first_at[seg])]
+    after = has[seg] & (pos > first_at[seg])
+    dip = after & (peak[seg] - x > bump)
+    dip_at = np.full(n, np.iinfo(np.int64).max)
+    np.minimum.at(dip_at, seg[dip], pos[dip])
+    looking = pos >= dip_at[seg]
+    # lowest value since the dip started, excluding the current sample
+    y = np.where(looking, x, np.inf)
+    run_min = np.minimum.accumulate(y - off) + off
+    prev_min = np.where(pos == 0, np.inf, np.concatenate(([np.inf], run_min[:-1])))
+    hit = looking & (pos > dip_at[seg]) & (x > prev_min + bump)
+    out[np.unique(seg[hit])] = True
+    return out
 
 def breath_shapes(flow: ChannelData, br: Breaths) -> BreathShapes:
     """Shape metrics of every breath in ``br`` (segmented from ``flow``); see module docstring."""
     rate = flow.rate_hz
     raw = np.nan_to_num(flow.values.astype(np.float64)) * 60.0  # L/min, upstream thresholds
     n = len(br.start_s)
-    valid = np.zeros(n, bool)
     qpeak, ned, fi = (np.full(n, np.nan) for _ in range(3))
     g = {name: np.zeros(n, bool) for name in GLASGOW}
-    starts = np.rint(br.start_s * rate).astype(int)
-    ends = np.minimum(starts + np.rint(br.ti_s * rate).astype(int), len(raw))
-    nxt = starts + np.rint(br.period_s * rate).astype(int)
-    insp_start = np.full(n, -1)
-    for i in range(n):
-        a, m = int(starts[i]), int(ends[i])
-        if m - a < MIN_INSP_SAMPLES:
-            continue
-        p = a + int(np.argmax(raw[a:m]))
-        s, e = _bounds(raw, p, 0.0, m)
-        x = raw[s:e]
-        if len(x) < MIN_INSP_SAMPLES or x.max() < MIN_PEAK_LPM:
-            continue
-        q = float(x.max())
-        valid[i], insp_start[i], qpeak[i] = True, s, q
-        ned[i] = (q - x[len(x) // 2]) / q * 100.0
-        fi[i] = float(x.mean()) / q
-        gs, ge = _bounds(raw, p, GREY_UPPER_LPM, len(raw))
-        x = raw[gs:ge] if ge - gs >= MIN_INSP_SAMPLES else x
-        ln = len(x)
-        mp = ln // 2  # upstream midpoint = start + round(len / 2)
-        if ln > 12:
-            left, right = x[:mp].sum(), x[mp + 1 :].sum()
-            left_pct = 100.0 * left / (left + right) if left + right > 0 else 50.0
-            top90 = 100.0 * np.count_nonzero(x > 0.9 * q) / ln
-        else:
-            left_pct, top90 = 50.0, 32.0
-        g["skew"][i] = left_pct < 45 or left_pct > 55
-        g["top_heavy"][i] = top90 > 40
-        g["spike"][i] = top90 < 20
-        mid = x[max(0, int(round(mp - 0.25 * ln))) : int(round(mp + 0.25 * ln))]
-        g["flat_top"][i] = bool(len(mid)) and float(((mid - mid.mean()) ** 2).sum() / (0.5 * ln)) < 0.75
-        g["multi_peak"][i] = _multi_peak(x)
+    if n == 0 or not len(raw):
+        return BreathShapes(np.zeros(n, bool), qpeak, ned, fi, g)
+    starts = np.rint(br.start_s * rate).astype(np.int64)
+    ends = np.minimum(starts + np.rint(br.ti_s * rate).astype(np.int64), len(raw))
+    nxt = starts + np.rint(br.period_s * rate).astype(np.int64)
+    ok = ends - starts >= MIN_INSP_SAMPLES
+    # inspiratory peak of each segmented breath (first maximum, as argmax)
+    idx, seg, pos = _segments(np.where(ok, starts, 0), np.where(ok, ends, 0))
+    vals = raw[idx]
+    smax = _seg_max(seg, vals, n)
+    at_max = vals == smax[seg]
+    p = np.full(n, -1, np.int64)
+    first_pos = np.full(n, np.iinfo(np.int64).max)
+    np.minimum.at(first_pos, seg[at_max], pos[at_max])
+    p[ok] = starts[ok] + first_pos[ok]
+    pp = np.where(ok, p, 0)
+    # NED inspiration: run of raw > 0 around the peak, end capped at the breath's inspiration end
+    rs0, re0 = _run_bounds(raw > 0.0)
+    pos_peak = raw[pp] > 0.0
+    s = np.where(pos_peak, rs0[pp], pp)
+    e = np.where(pos_peak, np.minimum(re0[pp], np.maximum(ends, pp)), pp)
+    idx, seg, pos = _segments(np.where(ok, s, 0), np.where(ok, e, 0))
+    x = raw[idx]
+    ln = np.where(ok, e - s, 0)
+    q = _seg_max(seg, x, n)
+    valid = ok & (ln >= MIN_INSP_SAMPLES) & (q >= MIN_PEAK_LPM)
+    qpeak[valid] = q[valid]
+    mid_val = raw[np.where(valid, s + ln // 2, 0)]
+    ned[valid] = (q[valid] - mid_val[valid]) / q[valid] * 100.0
+    fi[valid] = _seg_sum(seg, x, n)[valid] / ln[valid] / q[valid]
+    # Glasgow inspiration: run of raw > grey zone around the peak, else the NED inspiration
+    rs5, re5 = _run_bounds(raw > GREY_UPPER_LPM)
+    above = raw[pp] > GREY_UPPER_LPM
+    gs = np.where(above, rs5[pp], pp)
+    ge = np.where(above, re5[pp], pp)
+    use_g = ge - gs >= MIN_INSP_SAMPLES
+    gs, ge = np.where(use_g, gs, s), np.where(use_g, ge, e)
+    gs, ge = np.where(valid, gs, 0), np.where(valid, ge, 0)
+    idx, seg, pos = _segments(gs, ge)
+    x = raw[idx]
+    gl = ge - gs
+    mp = gl // 2  # upstream midpoint = start + round(len / 2)
+    left = _seg_sum(seg, np.where(pos < mp[seg], x, 0.0), n)
+    right = _seg_sum(seg, np.where(pos > mp[seg], x, 0.0), n)
+    top = _seg_sum(seg, (x > 0.9 * np.nan_to_num(qpeak)[seg]).astype(np.float64), n)
+    long = gl > 12
+    tot = left + right
+    with np.errstate(invalid="ignore", divide="ignore"):
+        left_pct = np.where(long, np.where(tot > 0, 100.0 * left / tot, 50.0), 50.0)
+        top90 = np.where(long, 100.0 * top / gl, 32.0)
+    g["skew"] = valid & ((left_pct < 45) | (left_pct > 55))
+    g["top_heavy"] = valid & (top90 > 40)
+    g["spike"] = valid & (top90 < 20)
+    q0 = np.maximum(0, np.round(mp - 0.25 * gl).astype(np.int64))
+    q1 = np.round(mp + 0.25 * gl).astype(np.int64)
+    in_mid = (pos >= q0[seg]) & (pos < q1[seg])
+    cnt = np.bincount(seg[in_mid], minlength=n)
+    msum = _seg_sum(seg[in_mid], x[in_mid], n)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mmean = msum / cnt
+        dev = _seg_sum(seg[in_mid], (x[in_mid] - mmean[seg[in_mid]]) ** 2, n)
+        g["flat_top"] = valid & (cnt > 0) & (dev / (0.5 * gl) < 0.75)
+    g["multi_peak"] = valid & _multi_peak(x, seg, pos, n)
     # cycle-based components: preceding expiration and the last five breaths
-    for i in range(n):
-        if not valid[i]:
-            continue
-        if i > 0 and nxt[i - 1] == starts[i]:  # contiguous with the previous breath
-            ex0, ex1 = int(ends[i - 1]), int(insp_start[i])
-            exp = raw[ex0:ex1] if ex1 > ex0 else np.empty(0)
-            if len(exp) and exp.min() < GREY_LOWER_LPM:
-                j = ex0 + int(np.argmin(exp))
-                k = int(round(rate))  # upstream extrapolates over 25 samples = 1 s
-                if j + k < len(raw) and raw[j] < raw[j + k] < 0:
-                    pre_rest = insp_start[i] - (j + round(k * raw[j] / (raw[j] - raw[j + k])))
-                else:
-                    pre_rest = -10
-                g["no_pause"][i] = pre_rest != 0 and pre_rest < 0.4 * rate
-            else:
-                g["multi_breath"][i] = True
-        if i >= 5:
-            span = (starts[i] - starts[i - 5]) / rate
-            g["inspir_rate"][i] = span > 0 and round(5 * 60 / span) > 20
-            peaks = qpeak[i - 4 : i + 1]
-            g["variable_amp"][i] = bool(np.isfinite(peaks).all()) and float(np.var(peaks)) > 4.0
+    prev = np.zeros(n, bool)
+    prev[1:] = valid[1:] & (nxt[:-1] == starts[1:])
+    ex0 = np.zeros(n, np.int64)
+    ex0[1:] = ends[:-1]
+    ex1 = np.where(prev, s, 0)
+    ex0 = np.where(prev & (ex1 > ex0), ex0, 0)
+    ex1 = np.where(prev & (ex1 > ex0), ex1, 0)
+    idx, seg, pos = _segments(ex0, ex1)
+    x = raw[idx]
+    emin = np.full(n, np.inf)
+    np.minimum.at(emin, seg, x)
+    at_min = x == emin[seg]
+    jpos = np.full(n, np.iinfo(np.int64).max)
+    np.minimum.at(jpos, seg[at_min], pos[at_min])
+    deep = prev & (ex1 > ex0) & (emin < GREY_LOWER_LPM)
+    g["multi_breath"] = prev & ~deep
+    k = int(round(rate))  # upstream extrapolates over 25 samples = 1 s
+    j = np.where(deep, ex0 + np.where(deep, jpos, 0), 0)
+    inside = deep & (j + k < len(raw))
+    rj = raw[j]
+    rk = raw[np.where(inside, j + k, 0)]
+    extrap = inside & (rj < rk) & (rk < 0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cross = j + np.round(k * rj / (rj - rk))
+    pre_rest = np.where(extrap, s - cross, -10.0)
+    g["no_pause"] = deep & (pre_rest != 0) & (pre_rest < 0.4 * rate)
+    if n > 5:
+        span = np.zeros(n)
+        span[5:] = (starts[5:] - starts[:-5]) / rate
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rate_ok = (span > 0) & (np.round(np.where(span > 0, 5 * 60 / span, 0.0)) > 20)
+        g["inspir_rate"] = valid & rate_ok & (np.arange(n) >= 5)
+        win = np.lib.stride_tricks.sliding_window_view(qpeak, 5)  # win[i - 4] = qpeak[i-4 : i+1]
+        var = np.full(n, np.nan)
+        fin = np.isfinite(win).all(axis=1)
+        var[4:][fin] = win[fin].var(axis=1)
+        g["variable_amp"] = valid & (np.arange(n) >= 5) & (var > 4.0)
+    else:
+        g["inspir_rate"] = np.zeros(n, bool)
+        g["variable_amp"] = np.zeros(n, bool)
     return BreathShapes(valid, qpeak, ned, fi, g)
 
 def rera_runs(

@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from pap_analytics import adapters, cli
+from pap_analytics.analytics.disturbances import refresh_trend_cache_for
 from pap_analytics.config import Config, SourceConfig
 from pap_analytics.ingest import ingest
 from pap_analytics.sync import sleep_interval, sync_all
@@ -33,6 +34,7 @@ def _ingest_cmd(args: argparse.Namespace, config: Config) -> int:
             rebuild=args.rebuild,
             prune=args.prune,
         )
+        cache = refresh_trend_cache_for(config)
         if args.json:
             print(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
         else:
@@ -46,6 +48,10 @@ def _ingest_cmd(args: argparse.Namespace, config: Config) -> int:
                     print(f"  warning: {w}")
                 for e in r.errors:
                     print(f"  ERROR: {e}")
+            if isinstance(cache, str):
+                print(f"warning: {cache}")
+            elif cache:
+                print(f"trend cache: {cache} nights computed")
         return 1 if any(r.errors for r in reports) or sync_failed else 0
 
     if args.watch is None:
