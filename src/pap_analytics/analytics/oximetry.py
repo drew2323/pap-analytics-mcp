@@ -82,32 +82,49 @@ def filter_artefacts(spo2: ChannelData, max_slope: float = 4.0, min_valid_run_s:
     return v
 
 
+def _prev_max(v: np.ndarray, win: int) -> np.ndarray:
+    """Max of the finite values in ``v[max(0, i - win) : i]`` for each ``i`` (NaN when none)."""
+    n = len(v)
+    out = np.full(n, np.nan)
+    if n < 2:
+        return out
+    w = np.where(np.isfinite(v), v, -np.inf)
+    # sliding max over windows of length ``win`` ending at i - 1 (shorter at the start)
+    padded = np.concatenate((np.full(win - 1, -np.inf), w))
+    m = np.lib.stride_tricks.sliding_window_view(padded, win).max(axis=1)  # m[k] = max w[k-win+1 .. k]
+    out[1:] = m[: n - 1]
+    out[np.isinf(out)] = np.nan
+    return out
+
 def _detect(
     v: np.ndarray, rate: float, drop: float, min_duration_s: float, window_s: float
 ) -> list[tuple[int, int, float, float]]:
-    """(start_idx, end_idx_exclusive, baseline, nadir) of desaturations in an already filtered series."""
+    """(start_idx, end_idx_exclusive, baseline, nadir) of desaturations in an already filtered series.
+
+    A desaturation starts at the first finite sample at least ``drop`` below the max of the preceding
+    ``window_s`` and lasts while SpO2 stays ``drop`` below that (frozen) baseline; scanning resumes
+    after it ends. Candidate starts are found vectorised; only the (few) candidates are walked."""
     n = len(v)
     win = max(1, int(round(window_s * rate)))
     out: list[tuple[int, int, float, float]] = []
+    if n == 0:
+        return out
+    base_all = _prev_max(v, win)
+    with np.errstate(invalid="ignore"):
+        cand = np.flatnonzero(np.isfinite(v) & (v <= base_all - drop))
     i = 0
-    while i < n:
-        if not np.isfinite(v[i]):
-            i += 1
+    for c in cand:
+        if c < i:
             continue
-        prev = v[max(0, i - win) : i]
-        prev = prev[np.isfinite(prev)]
-        if len(prev) and v[i] <= prev.max() - drop:
-            base = float(prev.max())
-            j = i
-            while j < n and np.isfinite(v[j]) and v[j] <= base - drop:
-                j += 1
-            if (j - i) / rate >= min_duration_s:
-                out.append((i, j, base, float(v[i:j].min())))
-            i = j
-        else:
-            i += 1
+        base = float(base_all[c])
+        seg = v[c:]
+        with np.errstate(invalid="ignore"):
+            stop = np.flatnonzero(~(np.isfinite(seg) & (seg <= base - drop)))
+        j = c + (int(stop[0]) if len(stop) else len(seg))
+        if (j - c) / rate >= min_duration_s:
+            out.append((int(c), int(j), base, float(v[c:j].min())))
+        i = j
     return out
-
 
 def desaturation_area(v: np.ndarray, rate: float, a: int, b: int, base: float) -> float:
     """Area (%·s) between ``base`` and SpO2 for the desaturation core ``[a, b)`` of filtered ``v``,

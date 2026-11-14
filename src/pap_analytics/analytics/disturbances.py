@@ -59,6 +59,7 @@ from typing import Any
 import numpy as np
 
 from pap_analytics.analytics import breathing as br
+from pap_analytics.analytics import trend_cache
 from pap_analytics.analytics.breathing import DEFAULTS as BREATHING_DEFAULTS
 from pap_analytics.analytics.flowshape import DEFAULTS as FLOWSHAPE_DEFAULTS
 from pap_analytics.analytics.flowshape import flow_shape
@@ -606,32 +607,104 @@ TREND_KEYS = (
 )  # fmt: skip
 
 
+def _trend_row(res: DisturbanceSummary) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Nightly trend values (without ``date``) and the unit/method metadata of the present metrics."""
+    row: dict[str, Any] = {"pulse_valid_h": res.pulse_valid_s / 3600,
+                           "flow_limitation_h": res.flow_limitation_s / 3600}  # fmt: skip
+    meta: dict[str, dict[str, Any]] = {}
+    for group, key in TREND_KEYS:
+        m = getattr(res, group).get(key)
+        row[key] = m.value if m else None
+        if m:
+            meta[key] = {"basis": group, "unit": m.unit, "provenance": "derived", "method": m.method}
+    return row, meta
+
+def night_trend_row(
+    store: Store, device_id: str, day: date, ctx: Context
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]] | None:
+    """Live trend row of one night (one shared catalog connection); None without sessions."""
+    with store.connection():
+        res = night_disturbances(store, device_id, day, ctx)
+    return None if res is None else _trend_row(res)
+
 def disturbance_trend(
-    store: Store, device_id: str, day_from: date, day_to: date, ctx: Context | None = None
-) -> dict[str, Any]:
+    store: Store, device_id: str, day_from: date, day_to: date, ctx: Context | None = None,
+    use_cache: bool = True,
+) -> dict[str, Any]:  # fmt: skip
     """One row per night with sessions: the comparable nightly disturbance metrics (value only;
-    units and methods once in ``metrics``), plus mean per metric over the nights that have it."""
+    units and methods once in ``metrics``), plus mean per metric over the nights that have it.
+
+    Nights are read from ``trend_cache`` when their cache key matches (written by
+    ``refresh_trend_cache`` after ingest); all others are computed live with identical results."""
     ctx = ctx or Context()
-    days = sorted({s.therapy_day for s in store.sessions(device_id, day_from, day_to)})
+    sessions = store.sessions(device_id, day_from, day_to)
+    by_day: dict[date, list[Any]] = {}
+    for s in sessions:
+        by_day.setdefault(s.therapy_day, []).append(s)
+    cache = trend_cache.read(store.dir) if use_cache else {}
     rows: list[dict[str, Any]] = []
     meta: dict[str, dict[str, Any]] = {}
-    for d in days:
-        res = night_disturbances(store, device_id, d, ctx)
-        if res is None:
-            continue
-        row: dict[str, Any] = {"date": d, "pulse_valid_h": res.pulse_valid_s / 3600,
-                               "flow_limitation_h": res.flow_limitation_s / 3600}  # fmt: skip
-        for group, key in TREND_KEYS:
-            m = getattr(res, group).get(key)
-            row[key] = m.value if m else None
-            if m:
-                meta.setdefault(
-                    key, {"basis": group, "unit": m.unit, "provenance": "derived", "method": m.method}
-                )
+    cached = 0
+    for d in sorted(by_day):
+        key = trend_cache.night_key(by_day[d], ctx)
+        hit = trend_cache.lookup(cache, device_id, d, key) if cache else None
+        if hit is not None:
+            cached += 1
+            row, m = hit
+        else:
+            live = night_trend_row(store, device_id, d, ctx)
+            if live is None:
+                continue
+            row, m = {"date": d, **live[0]}, live[1]
         rows.append(row)
+        for key, info in m.items():
+            meta.setdefault(key, dict(info))
+    order = {key: i for i, (_, key) in enumerate(TREND_KEYS)}
+    meta = dict(sorted(meta.items(), key=lambda kv: order.get(kv[0], len(order))))
     for key, info in meta.items():
         vals = [r[key] for r in rows if r.get(key) is not None]
         info["mean"] = float(np.mean(vals)) if vals else None
         info["nights"] = len(vals)
     notes = [] if rows else ["no nights with sessions in this range"]
-    return {"device_id": device_id, "metrics": meta, "nights": rows, "notes": notes}
+    return {"device_id": device_id, "metrics": meta, "nights": rows, "notes": notes,
+            "cached_nights": cached}  # fmt: skip
+
+def refresh_trend_cache(store: Store, ctx: Context) -> int:
+    """Recompute and save the trend rows of nights whose cache entry is missing or stale;
+    drop entries of nights that no longer exist. Returns the number of nights computed."""
+    old = trend_cache.read(store.dir)
+    devices: dict[str, Any] = {}
+    computed = 0
+    for dev in store.devices():
+        by_day: dict[date, list[Any]] = {}
+        for s in store.sessions(dev.id):
+            by_day.setdefault(s.therapy_day, []).append(s)
+        entries: dict[str, Any] = {}
+        for d, sess in sorted(by_day.items()):
+            if not trend_cache.cacheable(sess):
+                continue
+            key = trend_cache.night_key(sess, ctx)
+            prev = old.get(dev.id, {}).get(d.isoformat())
+            if isinstance(prev, dict) and prev.get("key") == key:
+                entries[d.isoformat()] = prev
+                continue
+            live = night_trend_row(store, dev.id, d, ctx)
+            if live is None:
+                continue
+            computed += 1
+            entries[d.isoformat()] = {"key": key, "row": live[0], "meta": live[1]}
+        devices[dev.id] = entries
+    trend_cache.write(store.dir, devices)
+    return computed
+
+
+def refresh_trend_cache_for(config: Any) -> int | str:
+    """Open the store read-only and refresh the trend cache for ``config`` (used after ingest).
+
+    Returns the number of nights computed, or an error text: the cache only speeds things up, so a
+    failure must never fail an ingest (live computation stays correct)."""
+    try:
+        with Store.open(config.store_dir, read_only=True) as s:
+            return refresh_trend_cache(s, Context.from_config(config))
+    except Exception as exc:  # noqa: BLE001
+        return f"trend cache not refreshed: {exc}"

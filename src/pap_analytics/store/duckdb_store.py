@@ -90,6 +90,7 @@ class Store:
         self.dir = store_dir
         self.read_only = read_only
         self._lock = lock
+        self._held: duckdb.DuckDBPyConnection | None = None
 
     # ---- lifecycle -------------------------------------------------------------------------
     @classmethod
@@ -151,7 +152,31 @@ class Store:
         self._init_schema()
 
     @contextmanager
+    def connection(self) -> Iterator[None]:
+        """Share one catalog connection for all store calls inside the block (re-entrant).
+
+        Saves a connect per query; keep blocks short (e.g. one night) because a held reader
+        connection makes a concurrent writer wait."""
+        if self._held is not None:
+            yield
+            return
+        with self._open_conn() as con:
+            self._held = con
+            try:
+                yield
+            finally:
+                self._held = None
+
+    @contextmanager
     def _conn(self) -> Iterator[duckdb.DuckDBPyConnection]:
+        if self._held is not None:
+            yield self._held
+            return
+        with self._open_conn() as con:
+            yield con
+
+    @contextmanager
+    def _open_conn(self) -> Iterator[duckdb.DuckDBPyConnection]:
         path = str(self.dir / CATALOG)
         # Readers: bounded retry, then a clear error. Writer: DuckDB refuses to open for writing while a
         # reader process holds the file (readers hold it only per query), so retry for longer.

@@ -51,6 +51,8 @@ files it shows only whether they exist and are readable.
 the current one (hard-linked, so only changes are transferred) and swapped in with two renames, so
 `ingest` never sees a half-synced tree. Nothing is ever written to the remote. A failed sync keeps the
 last good copy; `pap ingest` then still runs on it, prints the data age and exits 1.
+After each ingest, `pap ingest` also refreshes `<store_dir>/trend_cache.json` (nightly `disturbance_trend` rows; only new or changed nights are computed). It is a speed-up only: deleting it is safe, a failed refresh is a warning and the trend then computes those nights live.
+
 Status is stored in `<store_dir>/sync_state.json` and surfaced by the MCP tool `list_devices`
 (`sources[].last_sync_at`, `last_sync_ok`, `last_sync_error`, `last_ingest_at`, `newest_therapy_day`).
 
