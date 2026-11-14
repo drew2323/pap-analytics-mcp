@@ -81,5 +81,11 @@ port = 8765
 #                               # period over 2 min reaches this (fixture nights: median 0.21, p75 0.29).
 # restless_min_s = 60.0         # s, >= 0. Restless epochs must last this long to form a restless period.
 
+# --- Inspiratory flow shape (NED / Glasgow Index from 25 Hz flow, AirwayLab methods) ----
+# ned_fl_pct = 20.0             # %, 1..100. A breath is NED flow limited when its NED exceeds this (or flatness
+#                               # >= 0.85); used for `ned_flow_limited_pct` and NED RERA candidates.
+# ned_rera_sigh_ratio = 1.5     # >= 1. A run of 3-15 NED flow-limited breaths is a NED RERA candidate when the
+#                               # next breath's peak flow is >= ratio x the run's mean peak flow (sigh).
+
 # Deliberately NOT configurable (hardcoded): desaturation depths of 3 % / 4 % (ODI3 / ODI4),
 # the 60 s merge of nearby low-SpO2 spans, and the minimum absolute deviation per outlier metric.

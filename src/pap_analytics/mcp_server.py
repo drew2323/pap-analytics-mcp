@@ -73,12 +73,19 @@ All derived, in two groups that must not be mixed up:
   `restless_periods_per_h`, `breathing_irregularity_median` and `breathing_coverage_pct` (share of the
   session with 25 Hz flow; partial on some nights). **Calm/restless describe how regular breathing
   is, not sleep stages** (no EEG). Each pulse rise carries its `breathing_response` (recovery breath
-  after, reduced breathing before).
+  after, reduced breathing before). Inspiratory flow shape per breath from the 25 Hz flow
+  (AirwayLab methods): `ned_mean_pct` / `ned_flow_limited_pct` (negative effort dependence: flow
+  drop at mid-inspiration vs the peak), `glasgow_index` (0-9, sum of nine shape components) and the
+  shares of breaths flagged `glasgow_skew_pct`, `glasgow_spike_pct`, `glasgow_multi_breath_pct`,
+  `glasgow_variable_amp_pct`. Pressure support reshapes inspiration: `flow_shape_ps_pct` is the share
+  of breaths with PS and `flow_shape_by_ps` splits the shape metrics into PS = 0 and PS > 0; compare
+  nights within the same group, a shape change with a different PS share is not an airway change.
 - `inferred` – interpretations, not scored events: possible autonomic arousals (pulse rises,
-  split into linked to a respiratory event/desaturation/flow limitation vs `unexplained`), RERA
-  candidates (flow limitation ended by a recovery breath, outside device AHI events) and
-  `rdi_inferred`. No EEG is recorded: these are never arousals or RERAs in the clinical sense and
-  never change the device AHI.
+  split into linked to a respiratory event/desaturation/flow limitation/NED RERA vs `unexplained`),
+  RERA candidates (flow limitation from the device channel or from NED ended by a recovery breath,
+  outside device AHI events; `sources` says which), `ned_rera_index` and `rdi_inferred`.
+  No EEG is recorded: these are never arousals or RERAs in the clinical sense and never change the
+  device AHI.
 Pulse metrics need oximetry (only some nights); flow metrics exist for every detailed night.
 
 ## Notes
@@ -351,9 +358,11 @@ def build_server(
     ) -> dict[str, Any]:
         """Sleep disturbances beyond AHI for a night or a window: `measured` (pulse rate response
         to events, rapid pulse rises with their breathing response, hypoxic burden, flow limitation,
-        calm vs restless breathing) and `inferred` (possible autonomic arousals, RERA candidates)
-        metrics, plus timestamped `findings` (incl. restless breathing periods) and per-event pulse
-        responses. Inferred items are not scored arousals/RERAs; calm/restless is not sleep staging."""
+        calm vs restless breathing, inspiratory flow shape NED/Glasgow Index) and `inferred`
+        (possible autonomic arousals, RERA candidates from device flow limitation and from NED)
+        metrics, `flow_shape_by_ps` (flow shape split by pressure support 0 / > 0), plus timestamped
+        `findings` (incl. restless breathing periods) and per-event pulse responses. Inferred items
+        are not scored arousals/RERAs; calm/restless is not sleep staging."""
         with state.store() as s:
             dev = state.device(s, device_id)
             d = state.day(s, dev, date)
@@ -366,7 +375,8 @@ def build_server(
         date_from: str | None = None, date_to: str | None = None, device_id: str | None = None
     ) -> dict[str, Any]:
         """Nightly disturbance metrics (PRR, pulse-rise index, hypoxic burden, flow limitation,
-        calm-breathing share, inferred arousal and RERA-candidate indices) one row per night, with
+        calm-breathing share, flow shape: NED and Glasgow Index, inferred arousal, NED RERA and
+        RERA-candidate indices) one row per night, with
         units/methods and the mean per metric. Default: the last 14 days of data. Null = signal
         missing that night."""
         with state.store() as s:
@@ -383,9 +393,13 @@ def build_server(
     @server.tool()
     @_guard
     def compare_periods(
-        a_from: str, a_to: str, b_from: str, b_to: str, device_id: str | None = None
-    ) -> dict[str, Any]:
-        """Mean nightly metrics for period A and B with absolute and relative delta (B − A)."""
+        a_from: str, a_to: str, b_from: str, b_to: str, device_id: str | None = None,
+        include_disturbances: bool = False,
+    ) -> dict[str, Any]:  # fmt: skip
+        """Mean nightly metrics for period A and B with absolute and relative delta (B − A).
+        `include_disturbances=true` adds the nightly `disturbance_trend` metrics (pulse, flow
+        limitation, breathing stability, flow shape NED/Glasgow, RERA candidates), e.g. to compare
+        nights before and after a pressure change; slower (about 1-3 s per night)."""
         with state.store() as s:
             dev = state.device(s, device_id)
             try:
@@ -396,7 +410,12 @@ def build_server(
                 raise ToolError("period start must not be after its end")
             a = analytics.list_nights(s, dev, days[0], days[1], ctx)
             b = analytics.list_nights(s, dev, days[2], days[3], ctx)
-            return state.out(analytics.compare_periods(a, b))
+            if not include_disturbances:
+                return state.out(analytics.compare_periods(a, b))
+            ta = dist.disturbance_trend(s, dev, days[0], days[1], ctx)
+            tb = dist.disturbance_trend(s, dev, days[2], days[3], ctx)
+            units = {k: m["unit"] for k, m in (ta["metrics"] | tb["metrics"]).items()}
+            return state.out(analytics.compare_periods(a, b, ta["nights"], tb["nights"], units))
 
     @server.tool()
     @_guard

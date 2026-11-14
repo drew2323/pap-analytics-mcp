@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from pap_analytics.analytics.results import Comparison, NightRow
 from pap_analytics.model import Metric
@@ -30,9 +31,22 @@ def _vals(rows: Sequence[NightRow]) -> dict[str, tuple[list[float], str]]:
     }  # fmt: skip
 
 
-def compare_periods(a: Sequence[NightRow], b: Sequence[NightRow]) -> Comparison:
-    """Means per period, ``delta`` = b − a, ``delta_pct`` relative to a (None when a is 0/missing)."""
+def _extra(rows: Sequence[Mapping[str, Any]], units: Mapping[str, str]) -> dict[str, tuple[list[float], str]]:
+    return {k: ([r[k] for r in rows if r.get(k) is not None], u) for k, u in units.items()}
+
+def compare_periods(
+    a: Sequence[NightRow], b: Sequence[NightRow],
+    extra_a: Sequence[Mapping[str, Any]] = (), extra_b: Sequence[Mapping[str, Any]] = (),
+    extra_units: Mapping[str, str] | None = None,
+) -> Comparison:  # fmt: skip
+    """Means per period, ``delta`` = b − a, ``delta_pct`` relative to a (None when a is 0/missing).
+
+    ``extra_a``/``extra_b`` are further nightly rows (e.g. ``disturbance_trend`` nights) whose keys
+    listed in ``extra_units`` (key -> unit) are compared the same way."""
     va, vb = _vals(a), _vals(b)
+    if extra_units:
+        va |= _extra(extra_a, extra_units)
+        vb |= _extra(extra_b, extra_units)
     metrics: dict[str, dict[str, object]] = {}
     for key, (xs, unit) in va.items():
         ys = vb[key][0]
