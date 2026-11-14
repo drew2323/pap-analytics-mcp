@@ -141,3 +141,33 @@ def test_cli_ingest_writes_cache(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert cli.main(["--config", str(conf), "ingest", "--source", str(src)]) == 0
     assert (tmp_path / "st" / tc.CACHE_FILE).exists()  # STR-only source: no sessions, empty cache
     assert tc.read(tmp_path / "st") == {"resmed-23262018278": {}}
+
+
+def test_connection_is_shared_and_reentrant(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inside ``connection()`` all queries reuse one DuckDB connection; outside, one per query."""
+    import duckdb
+
+    from pap_analytics.analytics import Context, list_nights
+    from pap_analytics.store import duckdb_store
+
+    opened = []
+    real = duckdb.connect
+
+    def counting(*a, **k):
+        opened.append(1)
+        return real(*a, **k)
+
+    dev = store.devices()[0].id
+    monkeypatch.setattr(duckdb_store.duckdb, "connect", counting)
+    rows = list_nights(store, dev, date(2026, 10, 16), date(2026, 11, 8), Context())
+    assert len(rows) > 10 and len(opened) == 1  # whole list on one connection
+    opened.clear()
+    with store.connection():
+        with store.connection():  # re-entrant
+            store.sessions(dev)
+        store.devices()
+    assert len(opened) == 1
+    opened.clear()
+    store.sessions(dev)
+    store.devices()
+    assert len(opened) == 2

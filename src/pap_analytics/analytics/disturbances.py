@@ -362,6 +362,12 @@ def disturbance_summary(
     """Measured and inferred disturbance metrics for ``[start, end)`` (see module docstring)."""
     if end <= start:
         raise AnalyticsError("end must be after start")
+    with store.connection():  # one catalog connection for all queries of the window
+        return _disturbance_summary(store, device_id, start, end, thresholds)
+
+def _disturbance_summary(
+    store: Store, device_id: str, start: datetime, end: datetime, thresholds: Mapping[str, float] | None
+) -> DisturbanceSummary:
     t = effective_thresholds(thresholds)
     notes: list[str] = []
     measured: dict[str, Metric] = {}
@@ -622,9 +628,8 @@ def _trend_row(res: DisturbanceSummary) -> tuple[dict[str, Any], dict[str, dict[
 def night_trend_row(
     store: Store, device_id: str, day: date, ctx: Context
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]] | None:
-    """Live trend row of one night (one shared catalog connection); None without sessions."""
-    with store.connection():
-        res = night_disturbances(store, device_id, day, ctx)
+    """Live trend row of one night; None without sessions."""
+    res = night_disturbances(store, device_id, day, ctx)
     return None if res is None else _trend_row(res)
 
 def disturbance_trend(

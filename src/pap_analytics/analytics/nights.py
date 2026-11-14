@@ -96,10 +96,12 @@ def _day_data(
 
 
 def _has_oximetry(store: Store, device_id: str, sessions: list[SessionInfo]) -> bool:
-    for s in sessions:
-        if "spo2" in s.channels and has_finite(store.channel_window(device_id, "spo2", s.start, s.end)):
-            return True
-    return False
+    """Any valid SpO2 sample in the night's sessions (one query over their whole span)."""
+    with_spo2 = [s for s in sessions if "spo2" in s.channels]
+    if not with_spo2:
+        return False
+    lo, hi = min(s.start for s in with_spo2), max(s.end for s in with_spo2)
+    return has_finite(store.channel_window(device_id, "spo2", lo, hi))
 
 
 def _row(
@@ -148,13 +150,13 @@ def list_nights(
 ) -> list[NightRow]:
     """One row for each therapy day that has sessions or a device summary, in ``[day_from, day_to]``."""
     ctx = ctx or Context()
-    tds = {d.date: d for d in store.therapy_days(device_id, day_from, day_to)}
-    by_day: dict[date, list[SessionInfo]] = {}
-    for s in store.sessions(device_id, day_from, day_to):
-        by_day.setdefault(s.therapy_day, []).append(s)
-    return [
-        _row(store, device_id, d, tds.get(d), by_day.get(d, []), ctx) for d in sorted(set(tds) | set(by_day))
-    ]
+    with store.connection():  # one catalog connection for the whole list (~0.03 s per night)
+        tds = {d.date: d for d in store.therapy_days(device_id, day_from, day_to)}
+        by_day: dict[date, list[SessionInfo]] = {}
+        for s in store.sessions(device_id, day_from, day_to):
+            by_day.setdefault(s.therapy_day, []).append(s)
+        days = sorted(set(tds) | set(by_day))
+        return [_row(store, device_id, d, tds.get(d), by_day.get(d, []), ctx) for d in days]
 
 
 def _mask_off_gaps(sessions: list[SessionInfo]) -> list[dict[str, Any]]:
@@ -186,7 +188,11 @@ def _events_per_hour(events: list[Event], sessions: list[SessionInfo], ctx: Cont
 
 
 def night_summary(store: Store, device_id: str, day: date, ctx: Context | None = None) -> NightSummary:
-    ctx = ctx or Context()
+    """Full picture of one therapy day (one shared catalog connection for its queries)."""
+    with store.connection():
+        return _night_summary(store, device_id, day, ctx or Context())
+
+def _night_summary(store: Store, device_id: str, day: date, ctx: Context) -> NightSummary:
     sessions = store.sessions(device_id, day, day)
     td = next(iter(store.therapy_days(device_id, day, day)), None)
     events, lo, hi = _day_data(store, device_id, day, ctx, sessions)

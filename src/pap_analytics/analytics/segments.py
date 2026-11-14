@@ -31,7 +31,14 @@ def segment_stats(
     store: Store, device_id: str, start: datetime, end: datetime, ctx: Context | None = None,
     channels: Sequence[str] | None = None,
 ) -> SegmentStats:  # fmt: skip
-    ctx = ctx or Context()
+    """Channel statistics and events of a window (one shared catalog connection)."""
+    with store.connection():
+        return _segment_stats(store, device_id, start, end, ctx or Context(), channels)
+
+def _segment_stats(
+    store: Store, device_id: str, start: datetime, end: datetime, ctx: Context,
+    channels: Sequence[str] | None,
+) -> SegmentStats:  # fmt: skip
     if end <= start:
         raise AnalyticsError("segment end must be after start")
     names = list(channels) if channels else list(STAT_CHANNELS)

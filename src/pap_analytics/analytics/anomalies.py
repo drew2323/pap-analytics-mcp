@@ -318,7 +318,12 @@ def find_anomalies(
     ctx: Context | None = None,
 ) -> list[Anomaly]:  # fmt: skip
     """Ranked anomalies of one therapy day (most severe first, at most ``MAX_ANOMALIES``)."""
-    ctx = ctx or Context()
+    with store.connection():  # one catalog connection for the night and its baseline nights
+        return _find_anomalies(store, device_id, day, thresholds, ctx or Context())
+
+def _find_anomalies(
+    store: Store, device_id: str, day: date, thresholds: Mapping[str, float] | None, ctx: Context
+) -> list[Anomaly]:
     t = {**DEFAULTS, **{k: float(v) for k, v in (thresholds or ctx.thresholds).items() if k in DEFAULTS}}
     sessions = sorted(store.sessions(device_id, day, day), key=lambda s: s.start)
     if not sessions:

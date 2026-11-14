@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
@@ -92,6 +93,9 @@ class FakeStore:
 
     def events(self, device_id, start, end, types=None):
         return list(self._events)
+
+    def connection(self):  # the real Store shares one catalog connection; nothing to share here
+        return contextlib.nullcontext()
 
 def test_pulse_rise_breathing_response_links() -> None:
     n = 3600
