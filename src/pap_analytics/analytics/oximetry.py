@@ -172,6 +172,12 @@ def oximetry_summary(
     """Metrics for ``[start, end)``; ``None`` when the window holds no valid SpO2."""
     if end <= start:
         raise AnalyticsError("end must be after start")
+    with store.connection():  # one catalog connection for all queries of the window
+        return _oximetry_summary(store, device_id, start, end, thresholds)
+
+def _oximetry_summary(
+    store: Store, device_id: str, start: datetime, end: datetime, thresholds: Mapping[str, float] | None
+) -> OximetryResult | None:
     t = _thr(thresholds)
     parts = store.channel_window(device_id, "spo2", start, end)
     pulses = store.channel_window(device_id, "pulse", start, end)

@@ -156,7 +156,7 @@ class Store:
         """Share one catalog connection for all store calls inside the block (re-entrant).
 
         Saves a connect per query; keep blocks short (e.g. one night) because a held reader
-        connection makes a concurrent writer wait."""
+        connection makes a concurrent writer wait (it retries for up to ~20 s)."""
         if self._held is not None:
             yield
             return
