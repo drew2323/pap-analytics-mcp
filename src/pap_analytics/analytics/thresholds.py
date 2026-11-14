@@ -41,6 +41,8 @@ SPECS: dict[str, tuple[float, float | None, float | None, bool]] = {
     "reduced_breath_ratio": (_DIST["reduced_breath_ratio"], 0.0, 1.0, False),
     "restless_irregularity": (_DIST["restless_irregularity"], 0.01, None, False),
     "restless_min_s": (_DIST["restless_min_s"], 0.0, None, False),
+    "ned_fl_pct": (_DIST["ned_fl_pct"], 1.0, 100.0, False),
+    "ned_rera_sigh_ratio": (_DIST["ned_rera_sigh_ratio"], 1.0, None, False),
 }
 
 

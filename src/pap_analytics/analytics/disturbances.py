@@ -23,7 +23,8 @@ Definitions (thresholds are ``DEFAULTS``, overridable via ``[thresholds]``):
   last ``PULSE_RISE_WITHIN_S`` (rapid, not a drift); it ends when pulse falls below baseline + half
   the rise (baseline frozen at onset) and counts when it lasted >= ``pulse_rise_min_s``.
   Each rise is linked to what preceded it (device respiratory event, desaturation, flow-limitation
-  episode, device arousal mark, within ``link_window_s``) and to its **breathing response**:
+  episode, NED RERA candidate, device arousal mark, within ``link_window_s``) and to its
+  **breathing response**:
   ``recovery_breath`` when the max device tidal volume in the ``RISE_RESPONSE_S`` after the rise
   start is >= ``recovery_breath_ratio`` x the median of ``[-120 s, -30 s)``; ``reduced_breathing``
   when the smallest 25 Hz breath in the 30 s before is <= ``reduced_breath_ratio`` x the median
@@ -35,9 +36,14 @@ Definitions (thresholds are ``DEFAULTS``, overridable via ``[thresholds]``):
   some nights).
 * **Flow-limitation episode**: device ``flow_limitation`` >= ``fl_threshold`` for >= ``fl_min_s``
   (gaps of one sample bridged).
-* **RERA candidate**: a flow-limitation episode not overlapping a device apnea/hypopnea (± 10 s) and
-  ended by a recovery breath: max tidal volume in the ``RECOVERY_S`` after the episode
-  >= ``rera_recovery_ratio`` x median tidal volume during it (minute ventilation if no tidal volume).
+* **Flow shape** (``flowshape``): per-breath NED and Glasgow Index components from the 25 Hz flow
+  (AirwayLab methods), as shares of breaths, also split by pressure support (PS = 0 / PS > 0) in
+  ``flow_shape_by_ps`` because pressure support reshapes inspiratory flow.
+* **RERA candidate**, one list from two sources, never overlapping a device apnea/hypopnea (± 10 s):
+  ``device_flow_limitation`` = a flow-limitation episode ended by a recovery breath (max tidal volume
+  in the ``RECOVERY_S`` after it >= ``rera_recovery_ratio`` x median tidal volume during it; minute
+  ventilation if no tidal volume); ``ned`` = a run of NED flow-limited 25 Hz breaths ended by a sigh
+  (see ``flowshape``). Overlapping candidates of both sources are merged into one.
 
 Indices are per hour of *valid* signal (pulse hours for pulse metrics, flow-limitation channel
 hours for flow metrics) so nights with partial oximetry stay comparable. Not clinical interpretation.
@@ -54,6 +60,8 @@ import numpy as np
 
 from pap_analytics.analytics import breathing as br
 from pap_analytics.analytics.breathing import DEFAULTS as BREATHING_DEFAULTS
+from pap_analytics.analytics.flowshape import DEFAULTS as FLOWSHAPE_DEFAULTS
+from pap_analytics.analytics.flowshape import flow_shape
 from pap_analytics.analytics.nights import AHI_TYPES
 from pap_analytics.analytics.oximetry import _detect, _thr, filter_artefacts, oximetry_summary
 from pap_analytics.analytics.results import AnalyticsError
@@ -72,6 +80,7 @@ DEFAULTS: dict[str, float] = {
     "recovery_breath_ratio": 1.5,
     "reduced_breath_ratio": 0.3,
     **BREATHING_DEFAULTS,
+    **FLOWSHAPE_DEFAULTS,
 }
 PULSE_RANGE = (30.0, 220.0)
 PULSE_MAX_STEP = 10.0  # /min between consecutive 1 s samples; larger steps are artefacts
@@ -97,6 +106,7 @@ class DisturbanceSummary:
     findings: list[dict[str, Any]]
     event_responses: list[dict[str, Any]]
     notes: list[str] = field(default_factory=list)
+    flow_shape_by_ps: dict[str, dict[str, Metric]] = field(default_factory=dict)
 
 
 def _m(value: float | None, unit: str, method: str = "") -> Metric:
@@ -390,7 +400,8 @@ def disturbance_summary(
             if not overlaps_ahi and ratio is not None and ratio >= t["rera_recovery_ratio"]:
                 rera.append({"kind": "rera_candidate", "basis": "inferred", "start": s, "end": e,
                              "duration_s": (b - a) / p.rate_hz, "recovery_ratio": ratio,
-                             "recovery_signal": vol_name, "support": []})  # fmt: skip
+                             "recovery_signal": vol_name, "sources": ["device_flow_limitation"],
+                             "support": []})  # fmt: skip
     fl_hours = fl_s / 3600
     if fl_parts:
         measured["flow_limitation_time_pct"] = _m(
@@ -434,6 +445,29 @@ def disturbance_summary(
             "breathing stability describes that part only"
         )  # fmt: skip
 
+    # flow shape (NED, Glasgow) on the same breaths; NED RERA candidates join the device-FL ones
+    pad = timedelta(seconds=AHI_OVERLAP_S)
+    flow_s = sum(len(p.values) / p.rate_hz for p in flow_parts)
+    shape = flow_shape(
+        flow_parts, store.channel_window(device_id, "pressure", start, end),
+        store.channel_window(device_id, "epap", start, end), t, segmented,
+    )  # fmt: skip
+    measured.update(shape.metrics)
+    ned_rera = 0
+    for c in shape.rera:
+        s, e = c["start"], c["end"]
+        if s < start or any(a_ - pad <= e and s <= b_ + pad for a_, b_ in resp_spans):
+            continue
+        ned_rera += 1
+        same = next((r for r in rera if r["start"] <= e and s <= r["end"]), None)
+        if same is not None:
+            same["sources"].append("ned")
+            continue
+        rera.append({"kind": "rera_candidate", "basis": "inferred", **c, "sources": ["ned"],
+                     "support": []})  # fmt: skip
+    rera.sort(key=lambda x: x["start"])
+    ned_spans = [(c["start"], c["end"]) for c in rera if "ned" in c["sources"]]
+
     # pulse
     pulse_valid_s = 0.0
     rises: list[dict[str, Any]] = []
@@ -449,6 +483,7 @@ def disturbance_summary(
             linked = [name for name, spans, before in (
                 ("respiratory_event", resp_spans, 5.0), ("desaturation", desat_spans, link),
                 ("flow_limitation", fl_spans, 0.0), ("device_arousal", arousal_marks, link),
+                ("ned_rera", ned_spans, 5.0),
             ) if _near(s, spans, before, link)]  # fmt: skip
             rec = recovery_breath_ratio(tv_parts, s)
             red = _breath_ratio(segmented, flow_ends, s)
@@ -512,10 +547,17 @@ def disturbance_summary(
         )  # fmt: skip
     else:
         notes.append("no valid pulse in this window; pulse metrics and inferred arousals are missing")
+    if flow_s and shape.breaths:
+        inferred["ned_rera_index"] = _m(
+            ned_rera / (flow_s / 3600), "1/h",
+            "runs of NED flow-limited breaths ended by a sigh, outside device AHI events, "
+            "per hour of 25 Hz flow",
+        )  # fmt: skip
     if fl_hours:
         inferred["rera_candidate_index"] = _m(
             len(rera) / fl_hours, "1/h",
-            "flow limitation ended by a recovery breath, outside device AHI events",
+            "flow limitation (device channel or NED from the 25 Hz flow) ended by a recovery breath, "
+            "outside device AHI events",
         )  # fmt: skip
         inferred["rdi_inferred"] = _m(
             (len(resp) + len(rera)) / fl_hours, "1/h",
@@ -536,7 +578,7 @@ def disturbance_summary(
         notes.append(f"event responses capped to {MAX_LISTED} of {len(responses)}")
     return DisturbanceSummary(
         start, end, pulse_valid_s, fl_s, measured, inferred, findings[:MAX_LISTED], responses[:MAX_LISTED],
-        notes,
+        notes, shape.by_ps,
     )  # fmt: skip
 
 
@@ -555,8 +597,12 @@ TREND_KEYS = (
     ("measured", "calm_breathing_pct"), ("measured", "longest_calm_min"),
     ("measured", "restless_periods_per_h"), ("measured", "breathing_coverage_pct"),
     ("measured", "pulse_rise_breathing_response_pct"),
+    ("measured", "ned_mean_pct"), ("measured", "ned_flow_limited_pct"), ("measured", "glasgow_index"),
+    ("measured", "glasgow_skew_pct"), ("measured", "glasgow_spike_pct"),
+    ("measured", "glasgow_multi_breath_pct"), ("measured", "glasgow_variable_amp_pct"),
+    ("measured", "flow_shape_ps_pct"),
     ("inferred", "autonomic_arousal_index"), ("inferred", "unexplained_arousal_index"),
-    ("inferred", "rera_candidate_index"), ("inferred", "rdi_inferred"),
+    ("inferred", "ned_rera_index"), ("inferred", "rera_candidate_index"), ("inferred", "rdi_inferred"),
 )  # fmt: skip
 
 

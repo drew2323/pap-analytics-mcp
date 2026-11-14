@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from pap_analytics.config import Config
@@ -100,8 +101,22 @@ async def test_disturbance_tools_separate_measured_and_inferred(session) -> None
     for key in ("calm_breathing_pct", "longest_calm_min", "restless_periods_per_h", "breathing_coverage_pct"):
         assert key in d["measured"] and t["metrics"][key]["basis"] == "measured"
     assert any(f["kind"] == "restless_breathing" for f in d["findings"])
+    for key in ("ned_mean_pct", "glasgow_index", "glasgow_variable_amp_pct"):
+        assert key in d["measured"] and t["metrics"][key]["basis"] == "measured"
+    assert set(d["flow_shape_by_ps"]) == {"ps_0", "ps_gt_0"}
+    assert t["metrics"]["ned_rera_index"]["basis"] == "inferred"
     res, _ = await call(session, "disturbance_trend", date_from="2026-11-08", date_to="2026-11-03")
     assert res.isError
+
+@with_session
+async def test_compare_periods_with_disturbances(session) -> None:
+    args = {"a_from": "2026-11-07", "a_to": "2026-11-07", "b_from": "2026-11-08", "b_to": "2026-11-08"}
+    _, plain = await call(session, "compare_periods", **args)
+    assert "glasgow_index" not in plain["metrics"]
+    _, d = await call(session, "compare_periods", include_disturbances=True, **args)
+    g = d["metrics"]["glasgow_index"]
+    assert g["a_n"] == g["b_n"] == 1 and g["delta"] == pytest.approx(g["b_mean"] - g["a_mean"], abs=1e-3)
+    assert d["metrics"]["ahi"]["b_n"] == 1
 
 @with_session
 async def test_segment_stats_local_times(session) -> None:

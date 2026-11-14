@@ -82,7 +82,7 @@ Tools return compact JSON with explicit units and provenance; any time series is
 
 `list_devices`, `list_nights`, `night_summary`, `get_events`, `segment_stats`, `get_signal`, `get_signals`, `find_anomalies`, `compare_periods`, `get_settings`, `oximetry_summary`, `disturbance_summary`, `disturbance_trend`, optional `plot_segment`, admin `ingest` (disabled with `--read-only`). Resources: `pap://glossary`, `pap://devices`. Prompt: `nightly_review`.
 
-Disturbance results keep `measured` metrics (read off a signal: pulse response, pulse rises, hypoxic burden, flow limitation, calm/restless breathing from the 25 Hz flow with its coverage) apart from `inferred` ones (possible arousals, RERA candidates); both are `derived`.
+Disturbance results keep `measured` metrics (read off a signal: pulse response, pulse rises, hypoxic burden, flow limitation, calm/restless breathing and inspiratory flow shape (NED, Glasgow Index) from the 25 Hz flow with its coverage) apart from `inferred` ones (possible arousals, RERA candidates from device flow limitation and from NED); both are `derived`. All per-breath metrics use one breath segmentation (`analytics/breathing.py`). Flow-shape metrics are also split by pressure support (PS = 0 / PS > 0), because pressure support reshapes inspiratory flow. `compare_periods(include_disturbances=true)` compares these nightly values between periods.
 
 Exact signatures: [plan/WP-08-mcp-server.md](plan/WP-08-mcp-server.md).
 
