@@ -67,7 +67,10 @@ All derived, in two groups that must not be mixed up:
 - `measured` – read directly off a signal: `prr_*` (pulse rate response = peak pulse within 30 s
   after a device apnea/hypopnea minus the 30 s pre-event median), `pulse_rise_index` (rapid pulse
   rises >= 8 /min above the 60 s baseline per valid pulse hour), `hypoxic_burden` (%·min/h area of
-  >= 3 % desaturations below their baseline; an approximation, not the published event-window HB),
+  >= 3 % desaturations below their baseline; an approximation, not the published event-window HB;
+  each listed desaturation's `area_pct_min` covers `area_start`/`area_duration_s`, which is usually
+  longer than its `duration_s`, and the windows never overlap; `meets_odi4`/`odi4_events` = >= 4 %
+  desaturations lasting >= 10 s inside it, so a depth of 4 with a shorter 4 % part is not counted),
   `flow_limitation_time_pct` / `flow_limitation_index` (device flow-limitation channel >= 0.2),
   breathing stability from the 25 Hz flow: `calm_breathing_pct`, `longest_calm_min`,
   `restless_periods_per_h`, `breathing_irregularity_median` and `breathing_coverage_pct` (share of the
