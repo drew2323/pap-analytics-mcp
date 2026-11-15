@@ -178,3 +178,52 @@ def test_thresholds_override(store: Store) -> None:
     lo, hi = day_window(date(2026, 11, 8), CTX)
     loose = oximetry_summary(store, DEV, lo, hi, {"spo2_max_slope": 100, "min_valid_run_s": 0})
     assert loose is not None and loose.valid_s == 22549
+
+def test_adjacent_desaturation_areas_do_not_overlap() -> None:
+    # Issue #42. Base 97; dip A 300..314 at 93, partial recovery 315..324 at 95.5 (below base - 1 %,
+    # so A's area window would extend into B), dip B 325..339 at 93, then back to 97.
+    # Manual deficit of every sample below 97: 15*4 + 10*1.5 + 15*4 = 135 %·s, each counted once.
+    # A's window ends where B's core starts: 15*4 + 10*1.5 = 75 %·s; B: 15*4 = 60 %·s.
+    v = np.full(3600, 97.0)
+    v[300:315] = 93.0
+    v[315:325] = 95.5
+    v[325:340] = 93.0
+    r = oximetry_summary(FakeStore(spo2(v)), DEV, T0, T0 + timedelta(hours=1))
+    assert r is not None and r.metrics["desat3_count"].value == 2
+    a, b = r.desaturations
+    assert a["area_pct_min"] == pytest.approx(75 / 60) and b["area_pct_min"] == pytest.approx(60 / 60)
+    assert a["area_start"] == T0 + timedelta(seconds=300) and a["area_duration_s"] == 25
+    assert b["area_start"] == T0 + timedelta(seconds=325) and b["area_duration_s"] == 15
+    assert r.metrics["hypoxic_burden"].value == pytest.approx(135 / 60)  # 1 valid hour
+
+def test_meets_odi4_matches_nested_4pct_events() -> None:
+    # Issue #42. Dip 1 (600..619): 94 for 15 s, then 93 for 5 s -> depth 4, but the >= 4 % part lasts
+    # 5 s < 10 s: one 3 % desaturation, no 4 % one. Dip 2 (1200..1231): 93 for 12 s, 94 for 8 s,
+    # 93 for 12 s -> one 3 % desaturation of 32 s holding two 4 % desaturations of 12 s each.
+    v = np.full(3600, 97.0)
+    v[600:615], v[615:620] = 94.0, 93.0
+    v[1200:1212], v[1212:1220], v[1220:1232] = 93.0, 94.0, 93.0
+    r = oximetry_summary(FakeStore(spo2(v)), DEV, T0, T0 + timedelta(hours=1))
+    assert r is not None
+    assert r.metrics["desat3_count"].value == 2 and r.metrics["desat4_count"].value == 2
+    one, two = r.desaturations
+    assert one["depth"] == 4 and one["meets_odi4"] is False and one["odi4_events"] == 0
+    assert two["duration_s"] == 32 and two["meets_odi4"] is True and two["odi4_events"] == 2
+
+def test_real_desaturation_list_is_consistent_with_night_metrics(store: Store) -> None:
+    lo, hi = day_window(date(2026, 11, 8), CTX)
+    r = oximetry_summary(store, DEV, lo, hi)
+    assert r is not None and 0 < len(r.desaturations) < 100  # list not capped -> sums are complete
+    m, ds = r.metrics, r.desaturations
+    hours = r.valid_s / 3600
+    assert sum(d["area_pct_min"] for d in ds) / hours == pytest.approx(m["hypoxic_burden"].value)
+    assert sum(d["odi4_events"] for d in ds) == m["desat4_count"].value
+    assert sum(d["meets_odi4"] for d in ds) <= m["desat4_count"].value
+    prev_end = None
+    for d in ds:
+        a0, a1 = d["area_start"], d["area_start"] + timedelta(seconds=d["area_duration_s"])
+        assert a0 <= d["start"] and d["start"] + timedelta(seconds=d["duration_s"]) <= a1
+        assert prev_end is None or prev_end <= a0  # windows are disjoint
+        prev_end = a1
+        # outside the core SpO2 is above baseline - 3 %, so depth bounds the deficit over the window
+        assert 0 <= d["area_pct_min"] <= d["depth"] * d["area_duration_s"] / 60 + 1e-9

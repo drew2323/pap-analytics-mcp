@@ -13,7 +13,16 @@ Definition used (documented because oximetry indices vary between tools):
 * Hypoxic burden (desaturation-based approximation, not the event-window method of Azarbarzin
   et al.): for every >= 3 % desaturation the area between its frozen baseline and SpO2, from where
   SpO2 left the baseline (searched back <= ``AREA_EXTEND_S``) until it recovers to baseline − 1 %
-  (searched forward <= ``AREA_EXTEND_S``, stops at gaps); sum in %·min per valid hour.
+  (searched forward <= ``AREA_EXTEND_S``, stops at gaps); sum in %·min per valid hour. The area
+  window (``area_start``, ``area_duration_s``) is therefore usually longer than the desaturation's
+  ``duration_s`` (its >= 3 % core), so ``depth * duration_s`` is no upper bound of its area. Windows of
+  neighbouring desaturations never overlap: a window ends where the next core starts and the next
+  window starts no earlier than the previous one ends, so every sample counts at most once and the
+  per-desaturation areas add up to the hypoxic burden.
+* ``meets_odi4`` on a listed (>= 3 %) desaturation: a >= 4 % desaturation (own detection, also
+  >= ``min_duration_s``) starts inside it; ``odi4_events`` counts them (a long dip can hold several,
+  so the counts add up to ``desat4_count``). A depth >= 4 alone is not enough when the 4 % part is
+  shorter than ``min_duration_s``.
 
 Not clinical interpretation.
 """
@@ -126,20 +135,35 @@ def _detect(
         i = j
     return out
 
-def desaturation_area(v: np.ndarray, rate: float, a: int, b: int, base: float) -> float:
-    """Area (%·s) between ``base`` and SpO2 for the desaturation core ``[a, b)`` of filtered ``v``,
-    extended back to where SpO2 left the baseline and forward until it is back within 1 %."""
+def _area_window(
+    v: np.ndarray, rate: float, a: int, b: int, base: float, lo: int, hi: int
+) -> tuple[int, int]:
+    """Index range ``[k, m)`` of the area of core ``[a, b)`` of filtered ``v``: back to where SpO2 left
+    ``base``, forward until it is back within 1 %, each side <= ``AREA_EXTEND_S``, inside ``[lo, hi)``."""
     ext = int(round(AREA_EXTEND_S * rate))
     k = a
-    while k > 0 and a - k < ext and np.isfinite(v[k - 1]) and v[k - 1] < base:
+    while k > lo and a - k < ext and np.isfinite(v[k - 1]) and v[k - 1] < base:
         k -= 1
     m = b
-    while m < len(v) and m - b < ext and np.isfinite(v[m]) and v[m] < base - 1.0:
+    while m < hi and m - b < ext and np.isfinite(v[m]) and v[m] < base - 1.0:
         m += 1
-    seg = v[k:m]
-    seg = seg[np.isfinite(seg)]
-    return float(np.clip(base - seg, 0.0, None).sum()) / rate
+    return k, m
 
+def desaturation_areas(
+    v: np.ndarray, rate: float, found: list[tuple[int, int, float, float]]
+) -> list[tuple[int, int, float]]:
+    """``(window_start, window_end_exclusive, area %·s)`` per desaturation of ``found`` (sorted and
+    disjoint, as returned by ``_detect``) with non-overlapping windows (see module docstring)."""
+    out: list[tuple[int, int, float]] = []
+    lo = 0
+    for i, (a, b, base, _) in enumerate(found):
+        hi = found[i + 1][0] if i + 1 < len(found) else len(v)
+        k, m = _area_window(v, rate, a, b, base, lo, hi)
+        seg = v[k:m]
+        seg = seg[np.isfinite(seg)]
+        out.append((k, m, float(np.clip(base - seg, 0.0, None).sum()) / rate))
+        lo = m
+    return out
 
 def detect_desaturations(
     spo2: ChannelData, drop_pct: float = 3.0, min_duration_s: float = 10.0, baseline_window_s: float = 120.0
@@ -204,23 +228,33 @@ def _oximetry_summary(
         "t88_min": _m(float((allv < 88).sum()) / rate / 60, "min", "time with SpO2 < 88 %"),
     }  # fmt: skip
     events: dict[float, list[tuple[float, datetime, float, float, float]]] = {3.0: [], 4.0: []}
-    areas: dict[datetime, float] = {}  # %·s per >= 3 % desaturation, keyed by start
-    for drop in events:
-        for p, f in zip(parts, filtered, strict=True):
-            for a, b, base, nadir in _detect(
-                f, p.rate_hz, drop, t["desat_min_duration_s"], t["baseline_window_s"]
-            ):
+    extra: dict[datetime, dict[str, Any]] = {}  # per >= 3 % desaturation (keyed by start): area, 4 % events
+    for p, f in zip(parts, filtered, strict=True):
+        found = {
+            drop: _detect(f, p.rate_hz, drop, t["desat_min_duration_s"], t["baseline_window_s"])
+            for drop in events
+        }
+        for drop, evs in found.items():
+            for a, b, base, nadir in evs:
                 s = p.start + timedelta(seconds=a / p.rate_hz)
                 events[drop].append((drop, s, (b - a) / p.rate_hz, base, nadir))
-                if drop == 3.0:
-                    areas[s] = desaturation_area(f, p.rate_hz, a, b, base)
+        d3 = found[3.0]
+        for (a, b, _, _), (k, m, area) in zip(d3, desaturation_areas(f, p.rate_hz, d3), strict=True):
+            n4 = sum(1 for a4, _, _, _ in found[4.0] if a <= a4 < b)  # 4 % cores nest in 3 % cores
+            extra[p.start + timedelta(seconds=a / p.rate_hz)] = {
+                "area_start": p.start + timedelta(seconds=k / p.rate_hz),
+                "area_duration_s": (m - k) / p.rate_hz,
+                "area_pct_min": area / 60,
+                "odi4_events": n4,
+                "meets_odi4": n4 > 0,
+            }
     hours = valid_s / 3600
     metrics["odi3"] = _m(len(events[3.0]) / hours, "1/h", "desaturations >=3 % per valid hour")
     metrics["odi4"] = _m(len(events[4.0]) / hours, "1/h", "desaturations >=4 % per valid hour")
     metrics["desat3_count"] = _m(float(len(events[3.0])), "count")
     metrics["desat4_count"] = _m(float(len(events[4.0])), "count")
     metrics["hypoxic_burden"] = _m(
-        sum(areas.values()) / 60 / hours, "%min/h",
+        sum(x["area_pct_min"] for x in extra.values()) / hours, "%min/h",
         "area between baseline and SpO2 of >=3 % desaturations per valid hour "
         "(desaturation-based approximation, not event-window HB)",
     )  # fmt: skip
@@ -252,11 +286,9 @@ def _oximetry_summary(
     listed = sorted(d3, key=lambda x: x[1])
     if len(listed) > MAX_LISTED:
         notes.append(f"desaturation list capped to {MAX_LISTED} of {len(listed)} (>=3 %)")
-    four = {e[1] for e in events[4.0]}
     desats = [
         {"start": s, "duration_s": dur, "baseline": base, "nadir": nadir, "depth": base - nadir,
-         "area_pct_min": areas.get(s, 0.0) / 60,
-         "meets_odi4": s in four, "type": EventType.DESATURATION.value, "provenance": "derived"}
+         **extra[s], "type": EventType.DESATURATION.value, "provenance": "derived"}
         for _, s, dur, base, nadir in listed[:MAX_LISTED]
     ]  # fmt: skip
     return OximetryResult(start, end, recorded, valid_s, metrics, desats, notes)
